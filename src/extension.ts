@@ -128,10 +128,10 @@ function createSvgUri(iconIdFromMap: string, unicode?: string): vscode.Uri {
 	// viewBox 仍然应该匹配原始 SVG 的坐标系 (例如 1024x1024)
 	// 添加背景色和缩放
 	const bgColor = 'rgba(255, 255, 255, 0.5)'; // 中性半透明背景
-	const scale = 0.96;
+	const scale = 1;
 	const translation = (1024 * (1 - scale)) / 2;
 
-	const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="16" height="16">
+	const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="13" height="13" style="position: absolute; top: 1px; display: inline-block;">
 		<rect x="0" y="0" width="1024" height="1024" fill="${bgColor}"/>
 		<g transform="translate(${translation}, ${translation}) scale(${scale})">
 			${symbolContent}
@@ -669,9 +669,12 @@ export async function activate(context: vscode.ExtensionContext) {
 							const newInlineType = vscode.window.createTextEditorDecorationType({
 								after: {
 									contentIconPath: iconUri,
-									margin: '0 0 0 0.2em',
+									margin: '0 0 0 0.2em', // 左右相等的边距
 								},
-								// Restore hiding original text and keep alignment attempt
+								// 添加外层的样式
+								border: '1px solid transparent',  // 使用透明边框代替padding
+								isWholeLine: false,
+								rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
 							});
 							inlineIconDecorationTypes.set(iconName, newInlineType);
 						} else {
