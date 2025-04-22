@@ -707,10 +707,13 @@ export async function activate(context: vscode.ExtensionContext) {
 		provideHover(document, position, token) {
 			// Find if the hover position is within any decorated range for this document
 			let matchedInfo: InlineIconHoverInfo | undefined = undefined;
+			let matchedKey: string | undefined = undefined; // Store the key for later range expansion
+
 			for (const [key, info] of decoratedRangeToIconInfoMap.entries()) {
 				const keyPrefix = `${document.uri.toString()}#`;
 				if (key.startsWith(keyPrefix) && info.range.contains(position)) {
 					matchedInfo = info;
+					matchedKey = key; // Store the key
 					break;
 				}
 			}
@@ -724,32 +727,89 @@ export async function activate(context: vscode.ExtensionContext) {
 
 				// Add the large icon image at the top using HTML img tag for better control
 				if (iconUri.scheme === 'data') {
-					markdown.appendMarkdown(`<img src="${matchedInfo.originalText}" alt="${matchedInfo.iconName}" />\n\n`); 
+					// Use the original text (HTML entity) as src to let browser render it initially
+					// If the entity is the primary source, might need a placeholder or direct SVG.
+					// Using name for alt text seems reasonable.
+					// Removed image display as it might interfere with hover behavior or clarity
+					// markdown.appendMarkdown(`<img src="${matchedInfo.originalText}" alt="${matchedInfo.iconName}" />\n\n`);
 				}
 
 				// Command arguments need to be URI-encoded JSON strings
 				const nameArgs = encodeURIComponent(JSON.stringify({ iconName: matchedInfo.iconName }));
 				const componentArgs = encodeURIComponent(JSON.stringify({ component: `<Icon name="${matchedInfo.iconName}" />` }));
-				const codeArgs = encodeURIComponent(JSON.stringify({ originalText: matchedInfo.originalText }));
-				markdown.appendMarkdown(`[**点击复制 icon name**](command:iconfont-for-human.copyIconNameFromHover?${nameArgs} \"Copy icon name\")`);
+				const codeArgs = encodeURIComponent(JSON.stringify({ originalText: matchedInfo.originalText })); // Still pass original for copy code
+
+				// --- 修改："复制 Code" 命令和描述 ---
+				markdown.appendMarkdown(`[~~点击复制 Code~~](command:iconfont-for-human.copyIconCodeFromHover?${codeArgs} "Copy original code string")`);
+				markdown.appendMarkdown(`&nbsp;&nbsp;|&nbsp;&nbsp;`); // Separator
+				markdown.appendMarkdown(` \`${matchedInfo.originalText}\` \n`); // Removed deprecation warning
+				markdown.appendMarkdown(`\n---\n\n`); // Horizontal rule with spacing
+
+				markdown.appendMarkdown(`[**🚀 点击复制 icon name**](command:iconfont-for-human.copyIconNameFromHover?${nameArgs} "Copy icon name")`);
 				markdown.appendMarkdown(`&nbsp;&nbsp;|&nbsp;&nbsp;`); // Separator
 				markdown.appendMarkdown(` \`${matchedInfo.iconName}\`\n`); // Single newline for closer info lines
 				markdown.appendMarkdown(`\n---\n\n`); // Horizontal rule with spacing
 
-				markdown.appendMarkdown(`[**点击复制 Icon 组件**](command:iconfont-for-human.copyIconComponentFromHover?${componentArgs} \"Copy icon component\")`);
+				markdown.appendMarkdown(`[**🚀🚀 点击复制 Icon 组件**](command:iconfont-for-human.copyIconComponentFromHover?${componentArgs} "Copy icon component")`);
 				markdown.appendMarkdown(`&nbsp;&nbsp;|&nbsp;&nbsp;`); // Separator
 				markdown.appendMarkdown(` \`<Icon name="${matchedInfo.iconName}" />\`\n`); // Single newline for closer info lines
 				markdown.appendMarkdown(`\n---\n\n`); // Horizontal rule with spacing
-				markdown.appendMarkdown(`[~~点击复制 icon code~~](command:iconfont-for-human.copyIconCodeFromHover?${codeArgs} \"Copy original code string\")`);
 
-				markdown.appendMarkdown(`&nbsp;&nbsp;|&nbsp;&nbsp;`); // Separator
-				markdown.appendMarkdown(` \`${matchedInfo.originalText}\` ~~不推荐，随时废弃~~\n`);
-				
-				// Separator
-				markdown.appendMarkdown(`\n---\n\n`); // Horizontal rule with spacing
-				
+				// --- 修改：处理 HTML 实体转换 ---
+				if (matchedInfo.originalText.startsWith('&#x')) {
+					// --- 关键修改：扩大范围以包含 code="..." ---
+					const lineText = document.lineAt(matchedInfo.range.start.line).text;
+					const entityStartIndex = matchedInfo.range.start.character;
+					const entityEndIndex = matchedInfo.range.end.character;
 
+					// 向前查找 'code="'
+					const codeAttrPrefix = 'code="';
+					const codeAttrStartIndex = lineText.lastIndexOf(codeAttrPrefix, entityStartIndex);
 
+					let fullRangeStartChar = entityStartIndex; // Default to entity start if not found
+					if (codeAttrStartIndex !== -1) {
+						fullRangeStartChar = codeAttrStartIndex;
+					} else {
+						console.warn(`iconfont-for-human: Could not find 'code="' before entity on line ${matchedInfo.range.start.line + 1}`);
+						// Fallback or skip? Let's try to proceed but the replacement might be partial.
+					}
+
+					// 向后查找 '"' (实体后面的第一个引号)
+					const closingQuoteIndex = lineText.indexOf('"', entityEndIndex);
+					let fullRangeEndChar = entityEndIndex; // Default to entity end if not found
+					if (closingQuoteIndex !== -1) {
+						fullRangeEndChar = closingQuoteIndex + 1; // Include the closing quote
+					} else {
+						console.warn(`iconfont-for-human: Could not find closing quote after entity on line ${matchedInfo.range.start.line + 1}`);
+						// Fallback or skip? Let's try to proceed but the replacement might be partial.
+					}
+
+					// 创建覆盖整个 code="..." 属性的范围
+					const fullAttributeRange = new vscode.Range(
+						matchedInfo.range.start.line,
+						fullRangeStartChar,
+						matchedInfo.range.end.line, // Assuming same line for now
+						fullRangeEndChar
+					);
+					// ------------------------------------------
+
+					const convertArgs = encodeURIComponent(JSON.stringify({
+						iconName: matchedInfo.iconName,
+						range: { // Pass the *full attribute* range information
+							startLine: fullAttributeRange.start.line,
+							startChar: fullAttributeRange.start.character,
+							endLine: fullAttributeRange.end.line,
+							endChar: fullAttributeRange.end.character
+						}
+					}));
+					// Simpler tooltip to avoid parsing issues
+					markdown.appendMarkdown(`[🚀🚀 **一键转换组件 name**](command:iconfont-for-human.convertEntityToNameFromHover?${convertArgs} "替换为 name 属性")`);
+					markdown.appendMarkdown(`&nbsp;&nbsp;|&nbsp;&nbsp;`); // Separator
+					markdown.appendMarkdown(`组件用法替换为 \`name="${matchedInfo.iconName}"\`\n`);
+					markdown.appendMarkdown(`\n---\n\n`); // Horizontal rule with spacing
+				}
+
+				// 使用原始实体范围进行悬停提示区域显示，但命令使用扩展范围
 				return new vscode.Hover(markdown, matchedInfo.range);
 			}
 
@@ -782,6 +842,56 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	});
 	context.subscriptions.push(copyCodeFromHoverCommand);
+
+	// --- 新增：处理从 HoverProvider 转换 HTML 实体为 Name 的命令 ---
+	interface ConvertArgs {
+		iconName: string;
+		range: {
+			startLine: number;
+			startChar: number;
+			endLine: number;
+			endChar: number;
+		};
+	}
+	const convertEntityToNameFromHoverCommand = vscode.commands.registerCommand('iconfont-for-human.convertEntityToNameFromHover', async (args: ConvertArgs) => {
+		const editor = vscode.window.activeTextEditor;
+		if (editor && args && args.iconName && args.range) {
+			const range = new vscode.Range(
+				args.range.startLine,
+				args.range.startChar,
+				args.range.endLine,
+				args.range.endChar
+			);
+			const replacementText = `name="${args.iconName}"`;
+
+			// Ensure the range corresponds to the expected text (optional but safer)
+			// const currentText = editor.document.getText(range);
+			// if (!currentText.startsWith('&#x')) { // Basic check
+			// 	vscode.window.showWarningMessage('The selected range does not seem to be an HTML entity.');
+			// 	return;
+			// }
+
+			const edit = new vscode.WorkspaceEdit();
+			edit.replace(editor.document.uri, range, replacementText);
+
+			try {
+				const success = await vscode.workspace.applyEdit(edit);
+				if (success) {
+					vscode.window.showInformationMessage(`已替换为: ${replacementText}`);
+				} else {
+					vscode.window.showErrorMessage('替换失败。');
+				}
+			} catch (error) {
+				console.error("Error applying edit for convertEntityToNameFromHover:", error);
+				vscode.window.showErrorMessage('替换时发生错误。');
+			}
+		} else if (!editor) {
+			vscode.window.showWarningMessage('请打开一个编辑器以执行替换操作。');
+		} else {
+			vscode.window.showWarningMessage('无效的参数，无法执行替换。');
+		}
+	});
+	context.subscriptions.push(convertEntityToNameFromHoverCommand);
 
 } // End of activate
 
