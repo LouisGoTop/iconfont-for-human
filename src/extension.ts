@@ -737,12 +737,24 @@ export async function activate(context: vscode.ExtensionContext) {
 				// Command arguments need to be URI-encoded JSON strings
 				const nameArgs = encodeURIComponent(JSON.stringify({ iconName: matchedInfo.iconName }));
 				const componentArgs = encodeURIComponent(JSON.stringify({ component: `<Icon name="${matchedInfo.iconName}" />` }));
-				const codeArgs = encodeURIComponent(JSON.stringify({ originalText: matchedInfo.originalText })); // Still pass original for copy code
+				
+				// 添加反向映射逻辑：从 iconName 获取对应的 Unicode
+				let originalCode = matchedInfo.originalText;
+				if (!originalCode.startsWith('&#x')) {
+					// 如果不是 HTML 实体形式，尝试通过 iconMap 进行反向查找
+					for (const [name, unicode] of iconMap.entries()) {
+						if (name === matchedInfo.iconName) {
+							originalCode = `&#x${unicode};`;
+							break;
+						}
+					}
+				}
+				const codeArgs = encodeURIComponent(JSON.stringify({ originalText: originalCode }));
 
 				// --- 修改："复制 Code" 命令和描述 ---
-				markdown.appendMarkdown(`[~~点击复制 Code~~](command:iconfont-for-human.copyIconCodeFromHover?${codeArgs} "Copy original code string")`);
+				markdown.appendMarkdown(`[~~点击复制 Code~~](command:iconfont-for-human.copyIconCodeFromHover?${codeArgs} "Copy code as HTML entity")`);
 				markdown.appendMarkdown(`&nbsp;&nbsp;|&nbsp;&nbsp;`); // Separator
-				markdown.appendMarkdown(` \`${matchedInfo.originalText}\` \n`); // Removed deprecation warning
+				markdown.appendMarkdown(` \`${originalCode}\` ~~即将废弃~~ \n`); // 显示转换后的 code
 				markdown.appendMarkdown(`\n---\n\n`); // Horizontal rule with spacing
 
 				markdown.appendMarkdown(`[**🚀 点击复制 icon name**](command:iconfont-for-human.copyIconNameFromHover?${nameArgs} "Copy icon name")`);
