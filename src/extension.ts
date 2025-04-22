@@ -34,6 +34,16 @@ interface IconInfo {
 }
 let contentLineToIconInfoMap = new Map<number, IconInfo>();
 
+// Map to store info for hover provider, mapping range string to icon details
+interface InlineIconHoverInfo {
+	iconName: string;
+	originalText: string; // e.g., "icon-name" or "&#xe631;"
+	range: vscode.Range;
+}
+// Key: `${doc.uri.toString()}#${range.start.line}:${range.start.character}-${range.end.character}`
+// Value: InlineIconHoverInfo
+let decoratedRangeToIconInfoMap = new Map<string, InlineIconHoverInfo>();
+
 // --- Function to parse iconfont.js and extract SVG data ---
 async function parseIconFontJs() {
 	const jsFiles = await vscode.workspace.findFiles('**/iconfont.js', '**/node_modules/**', 1);
@@ -64,12 +74,18 @@ async function parseIconFontJs() {
 		while ((symbolMatch = symbolRegex.exec(svgContent)) !== null) {
 			const [fullMatch, id, content] = symbolMatch;
 			
-			// 从 symbol 内容中提取 path
-			const pathMatch = content.match(/<path.+?d="([^"]+)"/);
-			if (pathMatch) {
-				const path = pathMatch[1];
-				svgPathMap.set(id, path);
-				console.log(`iconfont-for-human: Found icon: ${id}`);
+			// 从 symbol 内容中提取 path (旧逻辑)
+			// const pathMatch = content.match(/<path.+?d="([^"]+)"/);
+			// if (pathMatch) {
+			// 	const path = pathMatch[1];
+			// 	svgPathMap.set(id, path);
+			// 	console.log(`iconfont-for-human: Found icon: ${id}`);
+			// }
+
+			// 新逻辑：存储 symbol 的完整内部内容
+			if (id && content) {
+				svgPathMap.set(id, content.trim()); // Store the inner content of the symbol
+				console.log(`iconfont-for-human: Found symbol content for: ${id}`);
 			}
 		}
 
@@ -77,9 +93,9 @@ async function parseIconFontJs() {
 		
 		// 打印前几个图标的信息用于调试
 		let count = 0;
-		for (const [id, path] of svgPathMap.entries()) {
+		for (const [id, symbolContent] of svgPathMap.entries()) {
 			if (count < 3) {
-				console.log(`Icon ${count + 1}: id="${id}", path="${path.substring(0, 50)}..."`);
+				console.log(`Icon ${count + 1}: id="${id}", content="${symbolContent.substring(0, 80)}..."`);
 			}
 			count++;
 		}
@@ -102,25 +118,30 @@ async function parseIconFontJs() {
 function createSvgUri(iconIdFromMap: string, unicode?: string): vscode.Uri {
 	// iconIdFromMap is likely 'icon-xxx' from the iconMap
 	const idWithoutPrefix = iconIdFromMap.replace(/^icon-/, '');
-	// Try getting path without prefix first (more common), then with prefix
-	const svgPath = svgPathMap.get(idWithoutPrefix) || svgPathMap.get(iconIdFromMap);
+	// Try getting symbol content without prefix first, then with prefix
+	const symbolContent = svgPathMap.get(idWithoutPrefix) || svgPathMap.get(iconIdFromMap);
 
-	if (!svgPath) {
-		console.warn(`iconfont-for-human: SVG path not found in svgPathMap for ${iconIdFromMap} or ${idWithoutPrefix}`);
-		return vscode.Uri.parse(''); // Return empty URI if no path is found
+	if (!symbolContent) {
+		console.warn(`iconfont-for-human: SVG symbol content not found in svgPathMap for ${iconIdFromMap} or ${idWithoutPrefix}`);
+		return vscode.Uri.parse(''); // Return empty URI if no content is found
 	}
 
-	// 根据 VS Code 主题设置颜色
-	const isDark = vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark;
-	const iconColor = isDark ? '#FFFFFF' : 'rgba(0, 0, 0, 0.9)';
-	// const bgColor = isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.05)'; // Background color removed
+	// 移除根据主题设置颜色的逻辑，使用 symbol 内自带的颜色
 
 	// 创建简化的 SVG 字符串，只包含路径，让 VS Code 控制尺寸
 	// viewBox 仍然应该匹配原始 SVG 的坐标系 (例如 1024x1024)
-	const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="14" height="14">
-        <path d="${svgPath}" fill="${iconColor}"></path>
-    </svg>`;
-    // Removed: background circle, container group, filter
+	// 添加背景色和缩放
+	const bgColor = 'rgba(255, 255, 255, 0.5)'; // 中性半透明背景
+	const scale = 0.96;
+	const translation = (1024 * (1 - scale)) / 2;
+
+	const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="16" height="16">
+		<rect x="0" y="0" width="1024" height="1024" fill="${bgColor}"/>
+		<g transform="translate(${translation}, ${translation}) scale(${scale})">
+			${symbolContent}
+		</g>
+	</svg>`;
+	// Removed: manual path creation, fill color override, background circle, container group, filter
 
 	const encodedSvg = Buffer.from(svg).toString('base64');
 	return vscode.Uri.parse(`data:image/svg+xml;base64,${encodedSvg}`);
@@ -209,6 +230,8 @@ function disposeDecorationTypes(editor?: vscode.TextEditor) {
 	}
 	// Clear context menu info map
 	contentLineToIconInfoMap.clear();
+	// Clear hover provider info
+	decoratedRangeToIconInfoMap.clear();
 	console.log('iconfont-for-human: Disposed existing decoration types.');
 }
 
@@ -221,6 +244,10 @@ function findIconInfoForLine(targetLine: number): IconInfo | undefined {
 // This method is called when your extension is activated
 export async function activate(context: vscode.ExtensionContext) {
 	console.log('Congratulations, your extension "iconfont-for-human" is now active!');
+
+	// Define supported languages for decorations and hover provider
+	const supportedCssLangs = ['css', 'scss', 'sass', 'less', 'stylus'];
+	const supportedCodeLangs = ['typescript', 'typescriptreact', 'javascript', 'javascriptreact', 'html'];
 
 	// Create the invisible decoration type for hover messages
 	hoverAnnotationDecorationType = vscode.window.createTextEditorDecorationType({});
@@ -256,10 +283,10 @@ export async function activate(context: vscode.ExtensionContext) {
 
 		// Clear the map for context menu info at the start of each update
 		contentLineToIconInfoMap.clear();
+		// Clear the map for hover provider info
+		decoratedRangeToIconInfoMap.clear();
 
 		const languageId = doc.languageId;
-		const supportedCssLangs = ['css', 'scss', 'sass', 'less', 'stylus'];
-		const supportedCodeLangs = ['typescript', 'typescriptreact', 'javascript', 'javascriptreact', 'html'];
 
 		// --- CSS Logic ---
 		if (supportedCssLangs.includes(languageId)) {
@@ -429,12 +456,18 @@ export async function activate(context: vscode.ExtensionContext) {
 					inlineDecorationsToApply.set(iconName, inlineOptionsArray);
 				}
 
-				// Add decoration option with range and hover message
-				inlineOptionsArray.push({
-					range: range,
-					hoverMessage: new vscode.MarkdownString(`\`${hoverText}\``) // Show original text in hover
-				});
+				// Add decoration option (no hover message here, handled by HoverProvider)
+				inlineOptionsArray.push({ range: range });
 				decoratedInlineRanges.add(rangeString); // Mark range as decorated
+
+				// Store info for HoverProvider
+				const hoverInfo: InlineIconHoverInfo = {
+					iconName: iconName,
+					originalText: hoverText,
+					range: range
+				};
+				const mapKey = `${doc.uri.toString()}#${rangeString}`;
+				decoratedRangeToIconInfoMap.set(mapKey, hoverInfo);
 			};
 
 			// Iterate through lines for code patterns
@@ -678,6 +711,87 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	});
 	context.subscriptions.push(copyCodeDisposal);
+
+	// --- Hover Provider ---
+	const hoverProvider = vscode.languages.registerHoverProvider(supportedCodeLangs, {
+		provideHover(document, position, token) {
+			// Find if the hover position is within any decorated range for this document
+			let matchedInfo: InlineIconHoverInfo | undefined = undefined;
+			for (const [key, info] of decoratedRangeToIconInfoMap.entries()) {
+				const keyPrefix = `${document.uri.toString()}#`;
+				if (key.startsWith(keyPrefix) && info.range.contains(position)) {
+					matchedInfo = info;
+					break;
+				}
+			}
+
+			if (matchedInfo) {
+				const markdown = new vscode.MarkdownString();
+				markdown.isTrusted = true; // IMPORTANT: Allows commands to be executed
+
+				// Get the icon URI for display
+				const iconUri = createSvgUri(matchedInfo.iconName);
+
+				// Add the large icon image at the top using HTML img tag for better control
+				if (iconUri.scheme === 'data') {
+					markdown.appendMarkdown(`<img src="${matchedInfo.originalText}" alt="${matchedInfo.iconName}" />\n\n`); 
+				}
+
+				// Command arguments need to be URI-encoded JSON strings
+				const nameArgs = encodeURIComponent(JSON.stringify({ iconName: matchedInfo.iconName }));
+				const componentArgs = encodeURIComponent(JSON.stringify({ component: `<Icon name="${matchedInfo.iconName}" />` }));
+				const codeArgs = encodeURIComponent(JSON.stringify({ originalText: matchedInfo.originalText }));
+				markdown.appendMarkdown(`[**点击复制 icon name**](command:iconfont-for-human.copyIconNameFromHover?${nameArgs} \"Copy icon name\")`);
+				markdown.appendMarkdown(`&nbsp;&nbsp;|&nbsp;&nbsp;`); // Separator
+				markdown.appendMarkdown(` \`${matchedInfo.iconName}\`\n`); // Single newline for closer info lines
+				markdown.appendMarkdown(`\n---\n\n`); // Horizontal rule with spacing
+
+				markdown.appendMarkdown(`[**点击复制 Icon 组件**](command:iconfont-for-human.copyIconComponentFromHover?${componentArgs} \"Copy icon component\")`);
+				markdown.appendMarkdown(`&nbsp;&nbsp;|&nbsp;&nbsp;`); // Separator
+				markdown.appendMarkdown(` \`<Icon name="${matchedInfo.iconName}" />\`\n`); // Single newline for closer info lines
+				markdown.appendMarkdown(`\n---\n\n`); // Horizontal rule with spacing
+				markdown.appendMarkdown(`[~~点击复制 icon code~~](command:iconfont-for-human.copyIconCodeFromHover?${codeArgs} \"Copy original code string\")`);
+
+				markdown.appendMarkdown(`&nbsp;&nbsp;|&nbsp;&nbsp;`); // Separator
+				markdown.appendMarkdown(` \`${matchedInfo.originalText}\` ~~不推荐，随时废弃~~\n`);
+				
+				// Separator
+				markdown.appendMarkdown(`\n---\n\n`); // Horizontal rule with spacing
+				
+
+
+				return new vscode.Hover(markdown, matchedInfo.range);
+			}
+
+			return undefined; // No hover info for this position
+		}
+	});
+	context.subscriptions.push(hoverProvider);
+
+	// --- Commands for Hover Provider ---
+	const copyNameFromHoverCommand = vscode.commands.registerCommand('iconfont-for-human.copyIconNameFromHover', (args: { iconName: string }) => {
+		if (args && args.iconName) {
+			vscode.env.clipboard.writeText(args.iconName);
+			vscode.window.showInformationMessage(`Copied Name: ${args.iconName}`);
+		}
+	});
+	context.subscriptions.push(copyNameFromHoverCommand);
+
+	const copyIconComponentFromHoverCommand = vscode.commands.registerCommand('iconfont-for-human.copyIconComponentFromHover', (args: { component: string }) => {
+		if (args && args.component) {
+			vscode.env.clipboard.writeText(args.component);
+			vscode.window.showInformationMessage(`Copied Icon: ${args.component}`);
+		}
+	});
+	context.subscriptions.push(copyIconComponentFromHoverCommand);
+
+	const copyCodeFromHoverCommand = vscode.commands.registerCommand('iconfont-for-human.copyIconCodeFromHover', (args: { originalText: string }) => {
+		if (args && args.originalText) {
+			vscode.env.clipboard.writeText(args.originalText);
+			vscode.window.showInformationMessage(`Copied Code: ${args.originalText}`);
+		}
+	});
+	context.subscriptions.push(copyCodeFromHoverCommand);
 
 } // End of activate
 
