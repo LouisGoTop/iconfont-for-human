@@ -409,15 +409,25 @@ class FontPreviewProvider implements vscode.CustomReadonlyEditorProvider<vscode.
 async function sendFontDataToWebviewFromUri(uri: vscode.Uri, webview: vscode.Webview) {
 	const filePath = uri.fsPath;
 	const fileExtension = path.extname(filePath).toLowerCase();
+    const suffix = fileExtension.substring(1);
 
 	try {
 		// 使用 workspace.fs 读取文件内容
 		const fileBuffer = Buffer.from(await vscode.workspace.fs.readFile(uri)); 
 		const base64Data = fileBuffer.toString('base64');
 
+		if (suffix == 'woff2') {
+			// result = openType.parse(buffer.buffer)
+			await Font.woff2.init(fileBuffer)
+		}
+
 		// --- 新增：在后端解析字体 ---
-		// 使用 Font.Font.create 并对 type 使用 as any 绕过 FontType 问题
-		const fontInstance = Font.Font.create(fileBuffer, { type: fileExtension.substring(1) as any });
+		// 使用 Font.Font.create 并根据你的要求添加 inflate 选项
+        const fontInstance = Font.Font.create(fileBuffer, {
+            type: suffix as any,
+            // @ts-ignore - 显式提供 inflate 函数给 woff 类型
+            inflate: suffix === 'woff' ? pako.inflate : undefined
+        });
 		const fontData = fontInstance.get(); // 使用 get() 获取数据
 
 		// 从 fontData.glyf 获取字形，并过滤掉没有 unicode 的
