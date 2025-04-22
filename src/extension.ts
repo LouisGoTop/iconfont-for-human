@@ -41,6 +41,9 @@ interface InlineIconHoverInfo {
 // Key 格式: `${文档 URI}#${起始行}:${起始字符}-${结束字符}`
 let decoratedRangeToIconInfoMap = new Map<string, InlineIconHoverInfo>();
 
+// --- 新增：存储当前字体预览 Webview --- 
+let currentFontPreviewPanel: vscode.WebviewPanel | undefined = undefined;
+
 // --- 文件解析函数 ---
 
 // 解析 iconfont.js, 提取 SVG <symbol> 内容
@@ -232,9 +235,213 @@ function findIconInfoForLine(targetLine: number): IconInfo | undefined {
 	return contentLineToIconInfoMap.get(targetLine);
 }
 
+// --- 新增：创建和管理字体预览 Webview 的函数 ---
+async function createOrShowFontPreviewPanel(context: vscode.ExtensionContext, document: vscode.TextDocument) {
+	const column = vscode.window.activeTextEditor
+		? vscode.window.activeTextEditor.viewColumn
+		: undefined;
+
+	const filePath = document.uri.fsPath;
+	const fileExtension = path.extname(filePath).toLowerCase();
+	const fileName = path.basename(filePath);
+
+	// 如果已存在面板，则显示它
+	if (currentFontPreviewPanel) {
+		currentFontPreviewPanel.reveal(column);
+		// 如果打开了新的字体文件，需要更新 webview 内容
+		// 在这里重新发送数据
+		await sendFontDataToWebview(document, currentFontPreviewPanel.webview);
+		currentFontPreviewPanel.title = `预览: ${fileName}`; // 更新标题
+		return;
+	}
+
+	// 否则，创建新面板
+	currentFontPreviewPanel = vscode.window.createWebviewPanel(
+		'fontPreview', // 内部类型
+		`预览: ${fileName}`, // 显示给用户的标题
+		column || vscode.ViewColumn.One, // 显示在哪个视图列
+		{
+			enableScripts: true, // 允许执行 JS
+			localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'media')] // 允许访问 media 目录
+		}
+	);
+
+	// 设置 HTML 内容
+	currentFontPreviewPanel.webview.html = await getWebviewContent(context, currentFontPreviewPanel.webview);
+
+	// 当面板关闭时，清理资源
+	currentFontPreviewPanel.onDidDispose(
+		() => {
+			currentFontPreviewPanel = undefined;
+		},
+		null,
+		context.subscriptions
+	);
+
+	// 面板创建后，立即发送字体数据
+	await sendFontDataToWebview(document, currentFontPreviewPanel.webview);
+
+	// (可选) 监听来自 Webview 的消息
+	currentFontPreviewPanel.webview.onDidReceiveMessage(
+		message => {
+			switch (message.command) {
+				case 'alert':
+					vscode.window.showErrorMessage(message.text);
+					return;
+				// 可以添加更多命令处理
+			}
+		},
+		null,
+		context.subscriptions
+	);
+}
+
+// --- 新增：获取 Webview 的 HTML 内容 --- 
+async function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Webview): Promise<string> {
+	const htmlPath = vscode.Uri.joinPath(context.extensionUri, 'media', 'load-ttf.html');
+	const cssPathOnDisk = vscode.Uri.joinPath(context.extensionUri, 'media', 'load-ttf.css');
+	const jsPathOnDisk = vscode.Uri.joinPath(context.extensionUri, 'media', 'load-ttf.js');
+
+	// 将本地文件路径转换为 Webview 可以使用的 URI
+	const cssUri = webview.asWebviewUri(cssPathOnDisk);
+	const jsUri = webview.asWebviewUri(jsPathOnDisk);
+
+	// 读取 HTML 文件内容
+	let htmlContent = await fs.promises.readFile(htmlPath.fsPath, 'utf8');
+
+	// 替换 HTML 中指向 CSS 和 JS 的链接
+	htmlContent = htmlContent.replace('./load-ttf.css', cssUri.toString());
+	htmlContent = htmlContent.replace('./load-ttf.js', jsUri.toString());
+
+	return htmlContent;
+}
+
+// --- 新增：读取字体文件并发送到 Webview --- 
+async function sendFontDataToWebview(document: vscode.TextDocument, webview: vscode.Webview) {
+	const filePath = document.uri.fsPath;
+	const fileExtension = path.extname(filePath).toLowerCase();
+
+	try {
+		const fileBuffer = await fs.promises.readFile(filePath);
+		const base64Data = fileBuffer.toString('base64');
+
+		// 发送消息到 Webview
+		webview.postMessage({
+			command: 'loadFont',
+			data: base64Data,
+			extension: fileExtension // e.g., '.ttf'
+		});
+		console.log(`iconfont-for-human: Sent font data (${fileExtension}) to webview.`);
+	} catch (error) {
+		console.error(`iconfont-for-human: Error reading or sending font file ${filePath}:`, error);
+		vscode.window.showErrorMessage(`无法读取或发送字体文件: ${path.basename(filePath)}`);
+		// 可以向 Webview 发送错误消息
+		webview.postMessage({
+			command: 'loadError',
+			message: `无法读取字体文件: ${path.basename(filePath)}`
+		});
+	}
+}
+
+// --- 新增：Custom Editor Provider 实现 ---
+class FontPreviewProvider implements vscode.CustomReadonlyEditorProvider<vscode.CustomDocument> {
+
+	public static readonly viewType = 'font.preview'; // 必须与 package.json 中的 viewType 一致
+
+	constructor(
+		private readonly context: vscode.ExtensionContext
+	) { }
+
+	// 对于只读编辑器，openCustomDocument 通常只需要返回 document 自身
+	openCustomDocument(
+		uri: vscode.Uri,
+		openContext: vscode.CustomDocumentOpenContext,
+		token: vscode.CancellationToken
+	): vscode.CustomDocument | Thenable<vscode.CustomDocument> {
+		// 这里可以添加读取文件初始状态的逻辑，但对于只读二进制文件，
+		// 简单地返回一个包含 URI 的对象通常足够了。
+		// 核心数据将在 resolveCustomEditor 中加载。
+		return { uri, dispose: () => { /* 清理逻辑 */ } };
+	}
+
+	public async resolveCustomEditor(
+		document: vscode.CustomDocument, // 参数类型改为 CustomDocument
+		webviewPanel: vscode.WebviewPanel,
+		token: vscode.CancellationToken
+	): Promise<void> {
+		console.log(`iconfont-for-human: Resolving custom editor for ${document.uri.fsPath}`);
+
+		// 设置 Webview 选项
+		webviewPanel.webview.options = {
+			enableScripts: true,
+			localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'media')]
+		};
+
+		// 设置 Webview HTML 内容
+		webviewPanel.webview.html = await getWebviewContent(this.context, webviewPanel.webview);
+
+		// 发送字体数据 - 修改 sendFontDataToWebview 以接受 Uri
+		await sendFontDataToWebviewFromUri(document.uri, webviewPanel.webview); // 使用新的辅助函数
+
+		// (可选) 监听来自 Webview 的消息
+		webviewPanel.webview.onDidReceiveMessage(
+			message => {
+				switch (message.command) {
+					case 'alert':
+						vscode.window.showErrorMessage(message.text);
+						return;
+					// 可以添加更多命令处理
+				}
+			},
+			null,
+			this.context.subscriptions // 将 listener 添加到 context subscriptions
+		);
+
+		// (可选) 可以在这里添加 dispose 时的清理逻辑，如果需要的话
+		// webviewPanel.onDidDispose(() => { ... }, null, this.context.subscriptions);
+	}
+}
+
+// --- 修改：sendFontDataToWebview 以接受 Uri --- 
+// 重命名并修改函数以接收 Uri 而不是 TextDocument
+async function sendFontDataToWebviewFromUri(uri: vscode.Uri, webview: vscode.Webview) {
+	const filePath = uri.fsPath;
+	const fileExtension = path.extname(filePath).toLowerCase();
+
+	try {
+		// 使用 workspace.fs 读取文件内容
+		const fileBuffer = Buffer.from(await vscode.workspace.fs.readFile(uri)); 
+		const base64Data = fileBuffer.toString('base64');
+
+		// 发送消息到 Webview
+		webview.postMessage({
+			command: 'loadFont',
+			data: base64Data,
+			extension: fileExtension // e.g., '.ttf'
+		});
+		console.log(`iconfont-for-human: Sent font data (${fileExtension}) to webview.`);
+	} catch (error) {
+		console.error(`iconfont-for-human: Error reading or sending font file ${filePath}:`, error);
+		vscode.window.showErrorMessage(`无法读取或发送字体文件: ${path.basename(filePath)}`);
+		// 可以向 Webview 发送错误消息
+		webview.postMessage({
+			command: 'loadError',
+			message: `无法读取字体文件: ${path.basename(filePath)}`
+		});
+	}
+}
+
 // This method is called when your extension is activated
 export async function activate(context: vscode.ExtensionContext) {
 	console.log('Congratulations, your extension "iconfont-for-human" is now active!');
+
+	// --- 注册 Custom Editor Provider ---
+	const fontPreviewProvider = new FontPreviewProvider(context);
+	context.subscriptions.push(
+		// 移除不必要的类型参数
+		vscode.window.registerCustomEditorProvider(FontPreviewProvider.viewType, fontPreviewProvider)
+	);
+	console.log(`iconfont-for-human: Registered ${FontPreviewProvider.viewType}`);
 
 	// Define supported languages for decorations and hover provider
 	const supportedCssLangs = ['css', 'scss', 'sass', 'less', 'stylus'];
@@ -572,9 +779,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		console.log("iconfont-for-human: Decorations updated.");
 	} // End of updateDecorations
 
-	// --- Initial Setup and Listeners ---
-	await findAndParseIconfontCss(); // Parse files first
-
+	// --- triggerUpdateDecorations 函数 (保持不变) ---
 	let timeout: NodeJS.Timeout | undefined = undefined;
 	function triggerUpdateDecorations(throttle = false) {
 		if (timeout) {
@@ -589,22 +794,37 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	}
 
-	// Initial decoration update
-	if (activeEditor) {
+	// Initial decoration update for non-custom editors
+	if (activeEditor && activeEditor.document.uri.scheme !== 'vscode-custom-editor') {
 		triggerUpdateDecorations();
 	}
 
-	// --- Event Listeners ---
-	vscode.window.onDidChangeActiveTextEditor(editor => {
+	// --- Event Listeners (保持不变, 但移除字体检查逻辑) ---
+	vscode.window.onDidChangeActiveTextEditor(async editor => {
 		console.log("iconfont-for-human: Active editor changed.");
-		// Clear decorations from the previous editor
-		if (activeEditor) {
-			disposeDecorationTypes(activeEditor); // Pass the specific editor to clear
+		// Clear decorations from the previous editor if it wasn't a custom editor
+		if (activeEditor && activeEditor.document.uri.scheme !== 'vscode-custom-editor') {
+			disposeDecorationTypes(activeEditor);
 		}
 		activeEditor = editor;
 		if (editor) {
-			// No need to re-parse, just update decorations for the new editor
-			triggerUpdateDecorations();
+			// --- 移除旧的字体文件检查逻辑 ---
+			// const doc = editor.document;
+			// const ext = path.extname(doc.uri.fsPath).toLowerCase();
+			// if (['.ttf', '.woff', '.woff2'].includes(ext)) {
+			// 	await createOrShowFontPreviewPanel(context, doc);
+			// } else {
+			// 	// 如果切换到非字体文件，并且预览面板存在，可以选择关闭或保留
+			// 	// currentFontPreviewPanel?.dispose(); // 如果需要自动关闭
+			// }
+			// -----------------------------------------
+			// Update decorations for the new editor only if it's NOT a custom editor
+			if (editor.document.uri.scheme !== 'vscode-custom-editor') {
+                triggerUpdateDecorations();
+            } else {
+				// If it IS a custom editor, ensure decorations are cleared from it if any existed
+				disposeDecorationTypes(editor);
+			}
 		} else {
 			// No active editor, ensure types are disposed
 			disposeDecorationTypes();
@@ -612,7 +832,8 @@ export async function activate(context: vscode.ExtensionContext) {
 	}, null, context.subscriptions);
 
 	vscode.workspace.onDidChangeTextDocument(event => {
-		if (activeEditor && event.document === activeEditor.document) {
+		// Update decorations only if the change is in the active editor AND it's not a custom editor
+		if (activeEditor && event.document === activeEditor.document && activeEditor.document.uri.scheme !== 'vscode-custom-editor') {
 			// console.log("iconfont-for-human: Text document changed."); // Verbose
 			triggerUpdateDecorations(true); // Throttle updates on text change
 		}
@@ -624,23 +845,19 @@ export async function activate(context: vscode.ExtensionContext) {
 		// Re-parsing might not be needed, but we NEED to recreate SVGs/DecorationTypes
 		disposeDecorationTypes(activeEditor); // Dispose old types with old colors
 		// Re-create maps? No, maps are fine. Just update decorations.
-		if (activeEditor) {
+		if (activeEditor && activeEditor.document.uri.scheme !== 'vscode-custom-editor') {
 			updateDecorations(); // This will recreate types with new colors via createSvgUri
 		}
 	}, null, context.subscriptions);
 
-	// Listen for configuration changes if you add settings
-	// vscode.workspace.onDidChangeConfiguration(...)
-
 	// Listen for icon file changes (iconfont.css, iconfont.js)
-	// This requires setting up a FileSystemWatcher
 	const watcherCss = vscode.workspace.createFileSystemWatcher('**/iconfont.css');
 	const watcherJs = vscode.workspace.createFileSystemWatcher('**/iconfont.js');
 
 	const reparseAndUpdate = async () => {
 		console.log('iconfont-for-human: Icon file changed, reparsing...');
 		await findAndParseIconfontCss(); // Reparse both files
-		if (activeEditor) {
+		if (activeEditor && activeEditor.document.uri.scheme !== 'vscode-custom-editor') {
 			triggerUpdateDecorations(); // Update immediately
 		}
 	};
@@ -655,6 +872,8 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(watcherCss, watcherJs);
 
 	console.log('iconfont-for-human: File watchers set up.');
+
+	// --- 保留原有的命令、菜单、HoverProvider 等 --- 
 
 	// Example command remains
 	let disposable = vscode.commands.registerCommand('iconfont-for-human.helloWorld', () => {
@@ -705,6 +924,10 @@ export async function activate(context: vscode.ExtensionContext) {
 	// --- Hover Provider ---
 	const hoverProvider = vscode.languages.registerHoverProvider(supportedCodeLangs, {
 		provideHover(document, position, token) {
+			// 增加判断：不在自定义编辑器中提供悬停
+			if (document.uri.scheme === 'vscode-custom-editor') {
+				return undefined;
+			}
 			// Find if the hover position is within any decorated range for this document
 			let matchedInfo: InlineIconHoverInfo | undefined = undefined;
 			let matchedKey: string | undefined = undefined; // Store the key for later range expansion
@@ -968,4 +1191,3 @@ export function deactivate() {
 	contentLineToIconInfoMap.clear(); // Explicit clear here too
 	unicodeToIconNameMap.clear(); // Clear the new map
 }
-
