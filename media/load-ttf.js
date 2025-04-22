@@ -85,9 +85,9 @@ window.onload = () => {
                                 <div class="item">
                                     <div class="icon" style="font-family: '${fontPreviewFamily}';" title="${name} (U+${unicodeHex.toUpperCase()})">${character}</div>
                                     <div class="codepoint-info">
-                                         <div class="name" onclick="copyText(this, '${name}')" title="Copy Name">${name}</div>
-                                         <div class="unicode" onclick="copyText(this, '&#x${unicodeHex};')" title="Copy HTML Entity">&amp;#x${unicodeHex};</div>
-                                         <div class="css-code" onclick="copyText(this, '\\${unicodeHex}')" title="Copy CSS Code">\\${unicodeHex}</div>
+                                        <div class="name" onclick="copyText(this, '${name}')" title="Copy Name">${name}</div>
+                                        <div class="unicode" onclick="copyText(this, '&#x${unicodeHex};')" title="Copy HTML Entity">&amp;#x${unicodeHex};</div>
+                                        <div class="css-code" onclick="copyText(this, '\\${unicodeHex}')" title="Copy CSS Code">\\${unicodeHex}</div>
                                     </div>
                                 </div>
                             `;

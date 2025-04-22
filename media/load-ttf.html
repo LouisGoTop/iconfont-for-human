@@ -4,23 +4,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Document</title>
+  <title>Font Preview</title>
+  <link href="./load-ttf.css" rel="stylesheet" type="text/css" />
   <script src="./load-ttf.js" type='text/javascript'></script>
 </head>
 
 <body>
-  <link href="./load-ttf.css" rel="stylesheet" type="text/css" />
-  <div style="display: flex; justify-content: center;">
-    <div class="content"></div>
-  </div>
+  <div class="loading" style="display: none; padding: 20px; text-align: center;">Loading font data...</div>
+  <div class="error" style="display: none; padding: 20px; color: red; text-align: center;"></div>
 
-  <div class="item-content">
-    <div class="iconfont">&#57346;</div>
-    <div style="display: flex;flex-direction: row;align-self:stretch;border-top: 1px solid #ccc;">
-      <div class="text text-left">&#38#62868;</div>
-      <div class="text text-right">\u1234</div>
-    </div>
-  </div>
+  <div class="content"></div>
 
 </body>
 

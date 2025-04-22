@@ -1,69 +1,106 @@
-.iconfont {
-  font-family: iconfont-preview !important;
-  font-size: 30px;
-  font-style: normal;
-  -webkit-font-smoothing: antialiased;
-  -webkit-text-stroke-width: 0.2px;
-  -moz-osx-font-smoothing: grayscale;
+/* General body styling */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  margin: 0;
+  padding: 15px;
+  /* Use VS Code theme variables for better integration */
+  color: var(--vscode-editor-foreground);
+  background-color: var(--vscode-editor-background);
 }
 
-.item {
-  min-width: 15vw;
+/* Loading and Error states */
+.loading,
+.error {
+  font-size: 1.1em;
 }
 
+/* Main content grid */
 .content {
-  display: flex;
-  flex-wrap: wrap;
-  width: 100vw;
-  /* justify-content: space-around; */
+  display: grid;
+  /* Responsive grid: columns are at least 150px wide, fitting as many as possible */
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 15px; /* Spacing between items */
+  padding-top: 10px;
 }
 
-.item-content {
-  min-width: 15vw;
-  margin-right: 12pt;
-  margin-bottom: 8pt;
-  border: 1px solid #ccc;
-  border-radius: 8pt;
+/* Individual icon item (card) */
+.item {
+  border: 1px solid var(--vscode-editorWidget-border, #ccc);
+  border-radius: 6px;
+  padding: 10px;
+  background-color: var(--vscode-editorWidget-background, #f3f3f3);
   display: flex;
   flex-direction: column;
   align-items: center;
-}
-
-.text {
-  /* padding:0 14pt; */
-  font-size: 8pt;
-  cursor: pointer;
-}
-
-.text-top {
-  flex: 1;
   text-align: center;
+  transition: box-shadow 0.2s ease-in-out, transform 0.1s ease-in-out;
+}
+
+.item:hover {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  /* Optional: slightly raise the card on hover */
+  /* transform: translateY(-2px); */
+}
+
+/* Icon display */
+.icon {
+  font-family: 'iconfont-preview'; /* Ensure this matches the @font-face */
+  font-size: 48px; /* Larger icon size */
+  margin-bottom: 15px;
+  min-height: 50px; /* Ensure space even if icon render is delayed */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vscode-editor-foreground); /* Use theme color */
+  /* Anti-aliasing */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Codepoint information section */
+.codepoint-info {
   width: 100%;
-  border-bottom: 1px solid #ccc;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--vscode-editorWidget-border, #ccc);
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px; /* Space between info lines */
 }
 
-.text-left {
-  flex: 1;
-  text-align: center;
-  border-right: 1px solid #ccc;
+/* Styling for copyable text elements */
+.name,
+.unicode,
+.css-code {
+  padding: 4px 6px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.2s ease-in-out;
+  word-break: break-all; /* Prevent long names from overflowing */
+  background-color: var(--vscode-input-background, #fff);
+  border: 1px solid var(--vscode-input-border, #ccc);
+  color: var(--vscode-input-foreground, #333);
 }
 
-.text-right {
-  flex: 1;
-  text-align: center;
+.name:hover,
+.unicode:hover,
+.css-code:hover {
+  background-color: var(--vscode-list-hoverBackground, #eee);
 }
 
-.text-top:hover {
-  background-color: #666;
-  border-radius: 6pt 6pt 0pt 0pt;
+/* Highlight effect when copying */
+.copied-highlight .name,
+.copied-highlight .unicode,
+.copied-highlight .css-code {
+  /* Use a distinct background or border for feedback */
+  background-color: var(--vscode-button-background, #007acc) !important; /* Use !important to override hover */
+  color: var(--vscode-button-foreground, #fff) !important;
+  border-color: var(--vscode-button-background, #007acc) !important;
 }
 
-.text-left:hover {
-  background-color: #666;
-  border-radius: 0pt 0pt 0pt 6pt;
-}
-
-.text-right:hover {
-  background-color: #666;
-  border-radius: 0pt 0pt 6pt 0pt;
+/* Override the temporary "Copied!" text style */
+.codepoint-info div[style*="cursor: default"] {
+  cursor: default !important; /* Ensure cursor changes back */
+  /* Keep the copied background style for the timeout duration */
 }
