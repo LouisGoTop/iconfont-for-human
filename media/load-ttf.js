@@ -127,7 +127,8 @@ window.onload = () => {
               // Use template literal for cleaner HTML structure
               return `
                   <div class="item">
-                      <div class="icon" style="font-family: '${fontPreviewFamily}';" title="${name} (U+${unicodeHex.toUpperCase()})">${character}</div>
+                      <div class="icon" style="font-family: '${fontPreviewFamily}';" title="${name} (U+${unicodeHex.toUpperCase()})"
+                           onclick="showIconPreview('${name}', '${unicodeHex}')">${character}</div>
                       <div class="codepoint-info">
                           <div class="name" onclick="copyText(this, '${name}')" title="Copy Name">${name}</div>
                           <div class="unicode" onclick="copyText(this, '&#x${unicodeHex};')" title="Copy HTML Entity">&amp;#x${unicodeHex};</div>
@@ -218,5 +219,15 @@ function copyToClipboard(content) {
     } catch (fallbackErr) {
       console.error('(Fallback) Failed to copy text: ', fallbackErr);
     }
+  });
+}
+
+// 点击图标打开预览
+function showIconPreview(iconName, unicodeHex) {
+  const vscode = acquireVsCodeApi();
+  vscode.postMessage({
+    command: 'previewIcon',
+    iconName: iconName,
+    iconUnicode: unicodeHex
   });
 }
