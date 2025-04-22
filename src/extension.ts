@@ -750,7 +750,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				markdown.appendMarkdown(` \`${matchedInfo.iconName}\`\n`); // Single newline for closer info lines
 				markdown.appendMarkdown(`\n---\n\n`); // Horizontal rule with spacing
 
-				markdown.appendMarkdown(`[**🚀🚀 点击复制 Icon 组件**](command:iconfont-for-human.copyIconComponentFromHover?${componentArgs} "Copy icon component")`);
+				markdown.appendMarkdown(`[**🚀 点击复制 Icon 组件**](command:iconfont-for-human.copyIconComponentFromHover?${componentArgs} "Copy icon component")`);
 				markdown.appendMarkdown(`&nbsp;&nbsp;|&nbsp;&nbsp;`); // Separator
 				markdown.appendMarkdown(` \`<Icon name="${matchedInfo.iconName}" />\`\n`); // Single newline for closer info lines
 				markdown.appendMarkdown(`\n---\n\n`); // Horizontal rule with spacing
@@ -806,6 +806,21 @@ export async function activate(context: vscode.ExtensionContext) {
 					markdown.appendMarkdown(`[🚀🚀 **一键转换组件 name**](command:iconfont-for-human.convertEntityToNameFromHover?${convertArgs} "替换为 name 属性")`);
 					markdown.appendMarkdown(`&nbsp;&nbsp;|&nbsp;&nbsp;`); // Separator
 					markdown.appendMarkdown(`组件用法替换为 \`name="${matchedInfo.iconName}"\`\n`);
+					markdown.appendMarkdown(`\n---\n\n`); // Horizontal rule with spacing
+
+					// --- 新增：一键转换为 Icon 组件 --- 
+					const componentConvertArgs = encodeURIComponent(JSON.stringify({
+						iconName: matchedInfo.iconName,
+						range: { // Pass the original entity range for this conversion
+							startLine: matchedInfo.range.start.line,
+							startChar: matchedInfo.range.start.character,
+							endLine: matchedInfo.range.end.line,
+							endChar: matchedInfo.range.end.character
+						}
+					}));
+					markdown.appendMarkdown(`[🚀🚀🚀 **一键转换为 Icon 组件**](command:iconfont-for-human.convertEntityToComponentFromHover?${componentConvertArgs} "将 HTML 实体替换为 Icon 组件")`);
+					markdown.appendMarkdown(`&nbsp;&nbsp;|&nbsp;&nbsp;`); // Separator
+					markdown.appendMarkdown(` 替换为 \`<Icon name="${matchedInfo.iconName}" />\`\n`);
 					markdown.appendMarkdown(`\n---\n\n`); // Horizontal rule with spacing
 				}
 
@@ -892,6 +907,41 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	});
 	context.subscriptions.push(convertEntityToNameFromHoverCommand);
+
+	// --- 新增：处理从 HoverProvider 转换 HTML 实体为 Icon 组件的命令 ---
+	const convertEntityToComponentFromHoverCommand = vscode.commands.registerCommand('iconfont-for-human.convertEntityToComponentFromHover', async (args: ConvertArgs) => { // Reusing ConvertArgs interface
+		const editor = vscode.window.activeTextEditor;
+		if (editor && args && args.iconName && args.range) {
+			const range = new vscode.Range(
+				args.range.startLine,
+				args.range.startChar,
+				args.range.endLine,
+				args.range.endChar
+			);
+			// Replacement text is the Icon component
+			const replacementText = `<Icon name="${args.iconName}" />`; 
+
+			const edit = new vscode.WorkspaceEdit();
+			edit.replace(editor.document.uri, range, replacementText);
+
+			try {
+				const success = await vscode.workspace.applyEdit(edit);
+				if (success) {
+					vscode.window.showInformationMessage(`已替换为: ${replacementText}`);
+				} else {
+					vscode.window.showErrorMessage('替换为 Icon 组件失败。');
+				}
+			} catch (error) {
+				console.error("Error applying edit for convertEntityToComponentFromHover:", error);
+				vscode.window.showErrorMessage('替换为 Icon 组件时发生错误。');
+			}
+		} else if (!editor) {
+			vscode.window.showWarningMessage('请打开一个编辑器以执行替换操作。');
+		} else {
+			vscode.window.showWarningMessage('无效的参数，无法执行替换。');
+		}
+	});
+	context.subscriptions.push(convertEntityToComponentFromHoverCommand);
 
 } // End of activate
 
