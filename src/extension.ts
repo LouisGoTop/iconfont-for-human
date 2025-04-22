@@ -5,6 +5,8 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as Font from 'fonteditor-core'; // 引入 fonteditor-core
+import * as pako from 'pako'; // 尝试显式引入 pako
 
 // --- 全局变量和类型定义 ---
 
@@ -413,20 +415,46 @@ async function sendFontDataToWebviewFromUri(uri: vscode.Uri, webview: vscode.Web
 		const fileBuffer = Buffer.from(await vscode.workspace.fs.readFile(uri)); 
 		const base64Data = fileBuffer.toString('base64');
 
-		// 发送消息到 Webview
+		// --- 新增：在后端解析字体 ---
+		// 使用 Font.Font.create 并对 type 使用 as any 绕过 FontType 问题
+		const fontInstance = Font.Font.create(fileBuffer, { type: fileExtension.substring(1) as any });
+		const fontData = fontInstance.get(); // 使用 get() 获取数据
+
+		// 从 fontData.glyf 获取字形，并过滤掉没有 unicode 的
+		// 为 g 添加 any 类型以解决隐式 any 问题
+		const glyphs = (fontData.glyf || []).filter((g: any) => g.unicode && g.unicode.length > 0);
+		
+		// 提取需要的信息 (unicode 和 name)
+		// 注意：unicode 可能是数组，我们通常取第一个
+		// 为 g 添加 any 类型
+		const glyphsData = glyphs.map((g: any) => {
+			const unicodeDecimal = g.unicode![0]; // 取第一个 unicode
+			return {
+				unicode: unicodeDecimal,
+				name: g.name || `uni${unicodeDecimal.toString(16).toUpperCase()}`
+			};
+		});
+		// ------------------------
+
+		// 发送消息到 Webview (包含原始 base64 和解析后的字形数据)
 		webview.postMessage({
 			command: 'loadFont',
-			data: base64Data,
+			base64Data: base64Data, // 用于 @font-face
+			glyphsData: glyphsData,  // 使用正确的键名 glyphsData
 			extension: fileExtension // e.g., '.ttf'
 		});
-		console.log(`iconfont-for-human: Sent font data (${fileExtension}) to webview.`);
-	} catch (error) {
-		console.error(`iconfont-for-human: Error reading or sending font file ${filePath}:`, error);
-		vscode.window.showErrorMessage(`无法读取或发送字体文件: ${path.basename(filePath)}`);
+		console.log(`iconfont-for-human: Sent font data (${fileExtension}) and ${glyphsData.length} glyphs to webview.`);
+	} catch (error: any) { // More specific error handling
+		console.error(`iconfont-for-human: Error reading or parsing font file ${filePath}:`, error);
+		let errorMessage = `无法解析字体文件: ${path.basename(filePath)}`;
+		if (error instanceof Error) {
+			errorMessage += `\nError: ${error.message}`;
+		}
+		vscode.window.showErrorMessage(errorMessage);
 		// 可以向 Webview 发送错误消息
 		webview.postMessage({
 			command: 'loadError',
-			message: `无法读取字体文件: ${path.basename(filePath)}`
+			message: errorMessage
 		});
 	}
 }
