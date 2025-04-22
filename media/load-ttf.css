@@ -2,7 +2,7 @@
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   margin: 0;
-  padding: 15px;
+  padding: 0 15px 15px 15px;
   /* Use VS Code theme variables for better integration */
   color: var(--vscode-editor-foreground);
   background-color: var(--vscode-editor-background);
@@ -19,7 +19,8 @@ body {
   display: grid;
   /* Responsive grid: columns are at least 150px wide, fitting as many as possible */
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 15px; /* Spacing between items */
+  gap: 15px;
+  /* Spacing between items */
   padding-top: 10px;
 }
 
@@ -44,14 +45,18 @@ body {
 
 /* Icon display */
 .icon {
-  font-family: 'iconfont-preview'; /* Ensure this matches the @font-face */
-  font-size: 48px; /* Larger icon size */
+  font-family: 'iconfont-preview';
+  /* Ensure this matches the @font-face */
+  font-size: 48px;
+  /* Larger icon size */
   margin-bottom: 15px;
-  min-height: 50px; /* Ensure space even if icon render is delayed */
+  min-height: 50px;
+  /* Ensure space even if icon render is delayed */
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--vscode-editor-foreground); /* Use theme color */
+  color: var(--vscode-editor-foreground);
+  /* Use theme color */
   /* Anti-aliasing */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -66,7 +71,8 @@ body {
   font-size: 12px;
   display: flex;
   flex-direction: column;
-  gap: 5px; /* Space between info lines */
+  gap: 5px;
+  /* Space between info lines */
 }
 
 /* Styling for copyable text elements */
@@ -77,7 +83,8 @@ body {
   cursor: pointer;
   border-radius: 4px;
   transition: background-color 0.2s ease-in-out;
-  word-break: break-all; /* Prevent long names from overflowing */
+  word-break: break-all;
+  /* Prevent long names from overflowing */
   background-color: var(--vscode-input-background, #fff);
   border: 1px solid var(--vscode-input-border, #ccc);
   color: var(--vscode-input-foreground, #333);
@@ -94,13 +101,68 @@ body {
 .copied-highlight .unicode,
 .copied-highlight .css-code {
   /* Use a distinct background or border for feedback */
-  background-color: var(--vscode-button-background, #007acc) !important; /* Use !important to override hover */
+  background-color: var(--vscode-button-background, #007acc) !important;
+  /* Use !important to override hover */
   color: var(--vscode-button-foreground, #fff) !important;
   border-color: var(--vscode-button-background, #007acc) !important;
 }
 
 /* Override the temporary "Copied!" text style */
 .codepoint-info div[style*="cursor: default"] {
-  cursor: default !important; /* Ensure cursor changes back */
+  cursor: default !important;
+  /* Ensure cursor changes back */
   /* Keep the copied background style for the timeout duration */
+}
+
+
+.search-container {
+  padding: 12px 18px;
+  /* 增加内边距 */
+  position: sticky;
+  top: 0;
+  background-color: var(--vscode-editor-background, #fff);
+  z-index: 10;
+  /* 添加更清晰的底部边框 */
+  border-bottom: 1px solid var(--vscode-editorGroup-border, rgba(128, 128, 128, 0.35));
+  /* 轻微阴影增加层次感 */
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.search-title {
+  font-size: 14px;
+  color: var(--vscode-input-placeholderForeground, #999);
+  margin-bottom: 6px;
+}
+
+#search-input {
+  width: 100%;
+  padding: 10px 12px;
+  /* 增加输入框内边距 */
+  box-sizing: border-box;
+  border: 1px solid var(--vscode-input-border, #ccc);
+  background-color: var(--vscode-input-background, #fff);
+  color: var(--vscode-input-foreground, #000);
+  border-radius: 4px;
+  /* 稍圆的边角 */
+  font-size: 1em;
+  /* 确保字体大小合适 */
+  /* 添加过渡效果 */
+  transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+#search-input::placeholder {
+  /* 样式占位符 */
+  color: var(--vscode-input-placeholderForeground, #999);
+  opacity: 0.7;
+}
+
+#search-input:focus {
+  /* 使用更明显的焦点样式 */
+  outline: none;
+  /* 移除默认轮廓 */
+  border-color: var(--vscode-focusBorder, #007acc);
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder, #007acc),
+    /* 模拟 VS Code 的焦点边框 */
+    0 2px 6px rgba(0, 122, 204, 0.2);
+  /* 添加轻微光晕 */
 }

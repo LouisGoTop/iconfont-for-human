@@ -9,6 +9,7 @@ window.onload = () => {
   const content = document.querySelector(".content");
   const loading = document.querySelector(".loading"); // Assume you have a loading indicator
   const errorContainer = document.querySelector(".error"); // Assume you have an error display area
+  const searchInput = document.getElementById('search-input'); // 获取搜索框
 
   function displayError(message) {
     if (loading) loading.style.display = 'none';
@@ -18,6 +19,49 @@ window.onload = () => {
       errorContainer.style.display = 'block';
     }
     console.error("Font Preview Error:", message);
+  }
+
+  // 筛选函数
+  function filterIcons() {
+    if (!content || !searchInput) return;
+
+    const searchTerm = searchInput.value.toLowerCase().trim();
+    const items = content.querySelectorAll('.item');
+
+    items.forEach(item => {
+      const nameElement = item.querySelector('.name');
+      const unicodeElement = item.querySelector('.unicode');
+      const cssCodeElement = item.querySelector('.css-code');
+
+      // 获取要搜索的文本，确保元素存在
+      const nameText = nameElement ? nameElement.textContent.toLowerCase() : '';
+      // 从 HTML 实体（&amp;#x...;）中提取十六进制代码进行搜索
+      const unicodeHexMatch = unicodeElement ? unicodeElement.textContent.match(/x([0-9a-f]+);/i) : null;
+      const unicodeText = unicodeHexMatch ? unicodeHexMatch[1].toLowerCase() : ''; // 提取 hex 部分
+      // 从 CSS 代码（\...）中提取十六进制代码
+      const cssCodeMatch = cssCodeElement ? cssCodeElement.textContent.match(/\\([0-9a-f]+)/i) : null;
+      const cssCodeText = cssCodeMatch ? cssCodeMatch[1].toLowerCase() : ''; // 提取 hex 部分
+      // 也可以搜索字符本身
+      const iconCharElement = item.querySelector('.icon');
+      const iconCharText = iconCharElement ? iconCharElement.textContent.toLowerCase() : '';
+
+
+      // 检查名称、Unicode 十六进制或 CSS 代码是否包含搜索词
+      // 或者搜索词就是图标字符本身
+      const isMatch = nameText.includes(searchTerm) ||
+                      unicodeText.includes(searchTerm) ||
+                      cssCodeText.includes(searchTerm) ||
+                      (searchTerm.length === 1 && iconCharText === searchTerm); // 精确匹配单个字符
+
+
+      // 根据匹配结果显示或隐藏项目
+      item.style.display = isMatch ? '' : 'none'; // 使用空字符串恢复默认显示 (block/flex/etc.)
+    });
+  }
+
+  // 为搜索框添加事件监听器
+  if (searchInput) {
+    searchInput.addEventListener('input', filterIcons);
   }
 
   window.addEventListener('message', event => {
@@ -82,15 +126,15 @@ window.onload = () => {
 
               // Use template literal for cleaner HTML structure
               return `
-                                <div class="item">
-                                    <div class="icon" style="font-family: '${fontPreviewFamily}';" title="${name} (U+${unicodeHex.toUpperCase()})">${character}</div>
-                                    <div class="codepoint-info">
-                                        <div class="name" onclick="copyText(this, '${name}')" title="Copy Name">${name}</div>
-                                        <div class="unicode" onclick="copyText(this, '&#x${unicodeHex};')" title="Copy HTML Entity">&amp;#x${unicodeHex};</div>
-                                        <div class="css-code" onclick="copyText(this, '\\${unicodeHex}')" title="Copy CSS Code">\\${unicodeHex}</div>
-                                    </div>
-                                </div>
-                            `;
+                  <div class="item">
+                      <div class="icon" style="font-family: '${fontPreviewFamily}';" title="${name} (U+${unicodeHex.toUpperCase()})">${character}</div>
+                      <div class="codepoint-info">
+                          <div class="name" onclick="copyText(this, '${name}')" title="Copy Name">${name}</div>
+                          <div class="unicode" onclick="copyText(this, '&#x${unicodeHex};')" title="Copy HTML Entity">&amp;#x${unicodeHex};</div>
+                          <div class="css-code" onclick="copyText(this, '\\${unicodeHex}')" title="Copy CSS Code">\\${unicodeHex}</div>
+                      </div>
+                  </div>
+              `;
             })
             .join('\n');
 
@@ -99,6 +143,9 @@ window.onload = () => {
           }
 
           if (loading) loading.style.display = 'none';
+
+          // Optional: Apply initial filter if search box has value (e.g., state restoration)
+          filterIcons(); // 在加载完内容后调用一次筛选
 
         } catch (error) {
           displayError(error.message || 'An unknown error occurred during font processing.');

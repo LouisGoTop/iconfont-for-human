@@ -74,10 +74,10 @@ async function parseIconFontJs() {
 		// 提取所有 symbol 元素
 		const symbolRegex = /<symbol.+?id="([^"]+)".+?>(.+?)<\/symbol>/g;
 		let symbolMatch;
-		
+
 		while ((symbolMatch = symbolRegex.exec(svgContent)) !== null) {
 			const [fullMatch, id, content] = symbolMatch;
-			
+
 			// 新逻辑：存储 symbol 的完整内部内容
 			if (id && content) {
 				svgPathMap.set(id, content.trim()); // Store the inner content of the symbol
@@ -86,7 +86,7 @@ async function parseIconFontJs() {
 		}
 
 		console.log(`iconfont-for-human: Successfully parsed ${svgPathMap.size} icons from iconfont.js`);
-		
+
 		// 打印前几个图标的信息用于调试
 		let count = 0;
 		for (const [id, symbolContent] of svgPathMap.entries()) {
@@ -409,11 +409,11 @@ class FontPreviewProvider implements vscode.CustomReadonlyEditorProvider<vscode.
 async function sendFontDataToWebviewFromUri(uri: vscode.Uri, webview: vscode.Webview) {
 	const filePath = uri.fsPath;
 	const fileExtension = path.extname(filePath).toLowerCase();
-    const suffix = fileExtension.substring(1);
+	const suffix = fileExtension.substring(1);
 
 	try {
 		// 使用 workspace.fs 读取文件内容
-		const fileBuffer = Buffer.from(await vscode.workspace.fs.readFile(uri)); 
+		const fileBuffer = Buffer.from(await vscode.workspace.fs.readFile(uri));
 		const base64Data = fileBuffer.toString('base64');
 
 		if (suffix == 'woff2') {
@@ -423,17 +423,17 @@ async function sendFontDataToWebviewFromUri(uri: vscode.Uri, webview: vscode.Web
 
 		// --- 新增：在后端解析字体 ---
 		// 使用 Font.Font.create 并根据你的要求添加 inflate 选项
-        const fontInstance = Font.Font.create(fileBuffer, {
-            type: suffix as any,
-            // @ts-ignore - 显式提供 inflate 函数给 woff 类型
-            inflate: suffix === 'woff' ? pako.inflate : undefined
-        });
+		const fontInstance = Font.Font.create(fileBuffer, {
+			type: suffix as any,
+			// @ts-ignore - 显式提供 inflate 函数给 woff 类型
+			inflate: suffix === 'woff' ? pako.inflate : undefined
+		});
 		const fontData = fontInstance.get(); // 使用 get() 获取数据
 
 		// 从 fontData.glyf 获取字形，并过滤掉没有 unicode 的
 		// 为 g 添加 any 类型以解决隐式 any 问题
 		const glyphs = (fontData.glyf || []).filter((g: any) => g.unicode && g.unicode.length > 0);
-		
+
 		// 提取需要的信息 (unicode 和 name)
 		// 注意：unicode 可能是数组，我们通常取第一个
 		// 为 g 添加 any 类型
@@ -576,7 +576,7 @@ export async function activate(context: vscode.ExtensionContext) {
 										console.warn(`iconfont-for-human: Could not create valid SVG URI for ${iconName} (CSS), skipping.`);
 										continue; // Skip this icon if URI is invalid
 									}
-								} catch(e) {
+								} catch (e) {
 									console.error(`iconfont-for-human: Error creating decoration type for ${iconName} (CSS)`, e);
 									continue; // Skip this icon if type creation fails
 								}
@@ -858,8 +858,8 @@ export async function activate(context: vscode.ExtensionContext) {
 			// -----------------------------------------
 			// Update decorations for the new editor only if it's NOT a custom editor
 			if (editor.document.uri.scheme !== 'vscode-custom-editor') {
-                triggerUpdateDecorations();
-            } else {
+				triggerUpdateDecorations();
+			} else {
 				// If it IS a custom editor, ensure decorations are cleared from it if any existed
 				disposeDecorationTypes(editor);
 			}
@@ -947,13 +947,13 @@ export async function activate(context: vscode.ExtensionContext) {
 		const iconInfo = findIconInfoForLine(lineNumber); // Use the map lookup
 
 		if (iconInfo && iconInfo.iconUnicode) {
-            // Format the Unicode as HTML entity &#xXXXX;
-            const htmlEntityString = `&#x${iconInfo.iconUnicode};`;
+			// Format the Unicode as HTML entity &#xXXXX;
+			const htmlEntityString = `&#x${iconInfo.iconUnicode};`;
 			vscode.env.clipboard.writeText(htmlEntityString);
 			vscode.window.showInformationMessage(`已复制 HTML 实体: ${htmlEntityString}`);
 		} else if (iconInfo) {
-            vscode.window.showWarningMessage(`图标 ${iconInfo.iconName} 未找到关联的 Unicode。`);
-        } else {
+			vscode.window.showWarningMessage(`图标 ${iconInfo.iconName} 未找到关联的 Unicode。`);
+		} else {
 			vscode.window.showWarningMessage(`未能在行 ${lineNumber + 1} 找到关联的 Iconfont 图标信息。`);
 		}
 	});
@@ -998,7 +998,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				// Command arguments need to be URI-encoded JSON strings
 				const nameArgs = encodeURIComponent(JSON.stringify({ iconName: matchedInfo.iconName }));
 				const componentArgs = encodeURIComponent(JSON.stringify({ component: `<Icon name="${matchedInfo.iconName}" />` }));
-				
+
 				// 添加反向映射逻辑：从 iconName 获取对应的 Unicode
 				let originalCode = matchedInfo.originalText;
 				if (!originalCode.startsWith('&#x')) {
@@ -1192,7 +1192,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				args.range.endChar
 			);
 			// Replacement text is the Icon component
-			const replacementText = `<Icon name="${args.iconName}" />`; 
+			const replacementText = `<Icon name="${args.iconName}" />`;
 
 			const edit = new vscode.WorkspaceEdit();
 			edit.replace(editor.document.uri, range, replacementText);
