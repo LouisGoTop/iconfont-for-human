@@ -19,9 +19,11 @@ let iconMap = new Map<string, string>();
 let svgPathMap = new Map<string, string>();
 // Map to store Unicode hex value back to icon name
 let unicodeToIconNameMap = new Map<string, string>();
-// Map to store dynamically created decoration types for each icon
-let iconDecorationTypes = new Map<string, vscode.TextEditorDecorationType>();
-// Separate decoration type for hover annotations (invisible)
+// Map to store dynamically created decoration types for Gutter icons (CSS)
+let gutterIconDecorationTypes = new Map<string, vscode.TextEditorDecorationType>();
+// Map to store dynamically created decoration types for Inline icons (Code)
+let inlineIconDecorationTypes = new Map<string, vscode.TextEditorDecorationType>();
+// Separate decoration type for hover annotations (invisible for triggering)
 let hoverAnnotationDecorationType: vscode.TextEditorDecorationType;
 // Map to store info for context menu commands, mapping content line number to icon info
 interface IconInfo {
@@ -115,7 +117,7 @@ function createSvgUri(iconIdFromMap: string, unicode?: string): vscode.Uri {
 
 	// 创建简化的 SVG 字符串，只包含路径，让 VS Code 控制尺寸
 	// viewBox 仍然应该匹配原始 SVG 的坐标系 (例如 1024x1024)
-	const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="16" height="16">
+	const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="14" height="14">
         <path d="${svgPath}" fill="${iconColor}"></path>
     </svg>`;
     // Removed: background circle, container group, filter
@@ -178,8 +180,12 @@ function disposeDecorationTypes(editor?: vscode.TextEditor) {
 	const targetEditor = editor || vscode.window.activeTextEditor;
 	// Clear decorations in the editor first
 	if (targetEditor) {
-		// Clear icon decorations
-		for (const decorationType of iconDecorationTypes.values()) {
+		// Clear gutter icon decorations
+		for (const decorationType of gutterIconDecorationTypes.values()) {
+			targetEditor.setDecorations(decorationType, []);
+		}
+		// Clear inline icon decorations
+		for (const decorationType of inlineIconDecorationTypes.values()) {
 			targetEditor.setDecorations(decorationType, []);
 		}
 		// Clear hover decorations
@@ -188,10 +194,15 @@ function disposeDecorationTypes(editor?: vscode.TextEditor) {
 		}
 	}
 	// Then dispose the types
-	for (const decorationType of iconDecorationTypes.values()) {
+	for (const decorationType of gutterIconDecorationTypes.values()) {
 		decorationType.dispose();
 	}
-	iconDecorationTypes.clear();
+	gutterIconDecorationTypes.clear();
+	// Dispose inline types
+	for (const decorationType of inlineIconDecorationTypes.values()) {
+		decorationType.dispose();
+	}
+	inlineIconDecorationTypes.clear();
 	if (hoverAnnotationDecorationType) {
 		hoverAnnotationDecorationType.dispose();
 		// hoverAnnotationDecorationType = undefined; // Optional: reset variable
@@ -228,17 +239,21 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 		if (iconMap.size === 0 || svgPathMap.size === 0) {
 			console.log("iconfont-for-human: Icon maps are empty, skipping decoration.");
-			// Clear existing decorations if maps become empty
-			disposeDecorationTypes(activeEditor);
+			disposeDecorationTypes(activeEditor); // Clear existing decorations if maps become empty
 			return;
 		}
 
 		const doc = activeEditor.document;
 		const lineCount = doc.lineCount;
+		// Decorations for CSS Gutter icons
 		let gutterDecorationsToApply = new Map<string, vscode.DecorationOptions[]>();
+		// Decorations for Code Inline icons
+		let inlineDecorationsToApply = new Map<string, vscode.DecorationOptions[]>();
 		let hoverAnnotations: vscode.DecorationOptions[] = [];
-		// Use a single set to track lines that have received *any* gutter icon decoration
-		const decoratedGutterLines = new Set<number>();
+		// Use sets to track decorated ranges/lines to prevent overlap/duplicates if needed
+		const decoratedGutterLines = new Set<number>(); // For CSS gutter icons
+		const decoratedInlineRanges = new Set<string>(); // Store range strings like "line:start-end"
+
 		// Clear the map for context menu info at the start of each update
 		contentLineToIconInfoMap.clear();
 
@@ -282,9 +297,9 @@ export async function activate(context: vscode.ExtensionContext) {
 							};
 							contentLineToIconInfoMap.set(targetLine, iconInfo);
 
-							// --- Prepare Gutter Icon Decoration ---
-							// Ensure a decoration type exists for this icon
-							if (!iconDecorationTypes.has(iconName)) {
+							// --- Prepare Gutter Icon Decoration (CSS) ---
+							// Ensure a decoration type exists for this icon in the GUTTER map
+							if (!gutterIconDecorationTypes.has(iconName)) {
 								try {
 									const iconUri = createSvgUri(iconName);
 									if (iconUri.scheme === 'data') {
@@ -292,7 +307,7 @@ export async function activate(context: vscode.ExtensionContext) {
 											gutterIconPath: iconUri,
 											gutterIconSize: 'contain',
 										});
-										iconDecorationTypes.set(iconName, newType);
+										gutterIconDecorationTypes.set(iconName, newType);
 										// console.log(`iconfont-for-human: Created decoration type for ${iconName}`); // Less verbose
 									} else {
 										console.warn(`iconfont-for-human: Could not create valid SVG URI for ${iconName} (CSS), skipping.`);
@@ -304,6 +319,7 @@ export async function activate(context: vscode.ExtensionContext) {
 								}
 							}
 
+							// Apply to Gutter Map
 							// Get or initialize the gutter options array for this icon type
 							let gutterOptionsArray = gutterDecorationsToApply.get(iconName);
 							if (!gutterOptionsArray) {
@@ -361,114 +377,146 @@ export async function activate(context: vscode.ExtensionContext) {
 			}
 		}
 
-		// --- HTML Entity Logic ---
-		if (supportedCodeLangs.includes(languageId)) {
+		// --- HTML Entity and Icon Name Logic (TSX, JS, HTML, etc.) ---
+		else if (supportedCodeLangs.includes(languageId)) {
+			// Regex for HTML Entities: &#x...;
 			const htmlEntityRegex = /&#x([a-fA-F0-9]+);/g;
-			// Iterate through lines for HTML entities
-			for (let i = 0; i < lineCount; i++) {
-				// Skip if line already got a gutter icon (e.g., from CSS logic if file type somehow overlaps)
-				if (decoratedGutterLines.has(i)) {
-					continue;
+			// Regex for Icon Name in props: name="icon-..." or name='icon-...' or name={"icon-..."} etc.
+			// This regex captures the icon name inside quotes/braces following `name=`
+			// It's simplified and might need adjustments for complex cases.
+			const iconNamePropRegex = /name=(?:["']|\{["'])(icon-[a-zA-Z0-9_-]+)(?:["']|\}["'])/g;
+
+			// Helper function to add inline decoration
+			const addInlineDecoration = (iconName: string, range: vscode.Range, hoverText: string) => {
+				const rangeString = `${range.start.line}:${range.start.character}-${range.end.character}`;
+				if (decoratedInlineRanges.has(rangeString)) return; // Avoid decorating same range twice
+
+				// Verify SVG path exists
+				const idWithoutPrefix = iconName.replace(/^icon-/, '');
+				if (!svgPathMap.has(idWithoutPrefix) && !svgPathMap.has(iconName)) {
+					console.warn(`iconfont-for-human: SVG path not found for inline icon ${iconName}.`);
+					return;
 				}
 
-				const lineText = doc.lineAt(i).text;
-				let match;
-				// Find all HTML entities on the line
-				while ((match = htmlEntityRegex.exec(lineText)) !== null) {
-					// Check if we already decorated this line due to a *previous* entity match on the *same* line
-					if (decoratedGutterLines.has(i)) {
-						break; // Move to next line if this one is already done
+				// Ensure an INLINE decoration type exists
+				if (!inlineIconDecorationTypes.has(iconName)) {
+					try {
+						const iconUri = createSvgUri(iconName);
+						if (iconUri.scheme === 'data') {
+							// Use 'after' as per user change, simplify styling
+							const newInlineType = vscode.window.createTextEditorDecorationType({
+								after: {
+									contentIconPath: iconUri,
+									margin: '0 0 0 0.3em',
+								},
+								// Restore hiding original text and keep alignment attempt
+							});
+							inlineIconDecorationTypes.set(iconName, newInlineType);
+						} else {
+							console.warn(`iconfont-for-human: Could not create valid SVG URI for ${iconName} (Inline), skipping.`);
+							return; // Skip if URI creation failed
+						}
+					} catch (e) {
+						console.error(`iconfont-for-human: Error creating inline decoration type for ${iconName}`, e);
+						return; // Skip if type creation fails
 					}
+				}
 
-					const unicodeHex = match[1].toLowerCase(); // Normalize hex for lookup
+				// Get or initialize the inline options array for this icon type
+				let inlineOptionsArray = inlineDecorationsToApply.get(iconName);
+				if (!inlineOptionsArray) {
+					inlineOptionsArray = [];
+					inlineDecorationsToApply.set(iconName, inlineOptionsArray);
+				}
+
+				// Add decoration option with range and hover message
+				inlineOptionsArray.push({
+					range: range,
+					hoverMessage: new vscode.MarkdownString(`\`${hoverText}\``) // Show original text in hover
+				});
+				decoratedInlineRanges.add(rangeString); // Mark range as decorated
+			};
+
+			// Iterate through lines for code patterns
+			for (let i = 0; i < lineCount; i++) {
+				let iconNamePropMatch;
+				while ((iconNamePropMatch = iconNamePropRegex.exec(doc.lineAt(i).text)) !== null) {
+					const iconName = iconNamePropMatch[1]; // Captured icon name (e.g., "icon-home")
+					const fullMatchText = iconNamePropMatch[0]; // e.g., name="icon-home"
+					const matchStartIndex = iconNamePropMatch.index;
+					// Need null check for index
+					if (matchStartIndex === undefined) continue;
+
+					const iconNameStartIndex = doc.lineAt(i).text.indexOf(iconName, matchStartIndex);
+					if (iconNameStartIndex === -1) continue; // Should not happen based on regex, but safety check
+
+					const iconNameEndIndex = iconNameStartIndex + iconName.length;
+					// Decorate the range of the icon name *inside* the quotes/braces
+					const range = new vscode.Range(i, iconNameStartIndex, i, iconNameEndIndex);
+					addInlineDecoration(iconName, range, iconName);
+					// Reset regex lastIndex to find overlapping/multiple matches on the same line if needed?
+					// iconNamePropRegex.lastIndex = matchStartIndex + 1; // Careful with loops
+				}
+				// Reset regex after searching the line
+				iconNamePropRegex.lastIndex = 0;
+
+				// 2. Find HTML Entities: &#x...;
+				// Reset regex
+				htmlEntityRegex.lastIndex = 0;
+				let htmlEntityMatch;
+				while ((htmlEntityMatch = htmlEntityRegex.exec(doc.lineAt(i).text)) !== null) {
+					const unicodeHex = htmlEntityMatch[1].toLowerCase(); // Normalize hex for lookup
 					const iconName = unicodeToIconNameMap.get(unicodeHex); // Look up icon name using the reversed map
+					const fullEntity = htmlEntityMatch[0]; // e.g., &#xe600;
+					const startIndex = htmlEntityMatch.index;
+					// Need null check for index
+					if (startIndex === undefined) continue;
+
+					const endIndex = startIndex + fullEntity.length;
+					const range = new vscode.Range(i, startIndex, i, endIndex);
 
 					if (iconName) {
-						// Verify SVG path exists for this icon name
-						const idWithoutPrefix = iconName.replace(/^icon-/, '');
-						if (svgPathMap.has(idWithoutPrefix) || svgPathMap.has(iconName)) {
-
-							// --- Prepare Gutter Icon Decoration ---
-							if (!iconDecorationTypes.has(iconName)) {
-								try {
-									const iconUri = createSvgUri(iconName);
-									if (iconUri.scheme === 'data') {
-										const newType = vscode.window.createTextEditorDecorationType({
-											gutterIconPath: iconUri,
-											gutterIconSize: 'contain',
-										});
-										iconDecorationTypes.set(iconName, newType);
-									} else {
-										console.warn(`iconfont-for-human: Could not create valid SVG URI for ${iconName} (HTML entity), skipping.`);
-										continue; // Skip this entity match
-									}
-								} catch(e) {
-									console.error(`iconfont-for-human: Error creating decoration type for ${iconName} (HTML entity)`, e);
-									continue; // Skip this entity match
-								}
-							}
-
-							// Get or initialize the gutter options array for this icon type
-							let gutterOptionsArray = gutterDecorationsToApply.get(iconName);
-							if (!gutterOptionsArray) {
-								gutterOptionsArray = [];
-								gutterDecorationsToApply.set(iconName, gutterOptionsArray);
-							}
-							// Add options for the gutter icon on line i
-							const gutterRange = new vscode.Range(i, 0, i, 1);
-							gutterOptionsArray.push({ range: gutterRange });
-							decoratedGutterLines.add(i); // Mark line i as decorated
-
-							// --- Prepare Hover Annotation ---
-							const hoverIconUri = createSvgUri(iconName);
-							const markdownString = new vscode.MarkdownString();
-							markdownString.isTrusted = true;
-							markdownString.appendMarkdown(`**Icon:** \`${iconName}\`\\n\\n`);
-							// Display both formats if available
-							const cssUnicode = iconMap.get(iconName); // Get original CSS unicode format
-							if (cssUnicode) {
-								markdownString.appendMarkdown(`**Unicode:** \`\\${cssUnicode}\` / \`${match[0]}\`\\n\\n`);
-							} else {
-								markdownString.appendMarkdown(`**Unicode:** \`${match[0]}\`\\n\\n`); // Fallback to just HTML entity
-							}
-							if (hoverIconUri.scheme === 'data') {
-								markdownString.appendMarkdown(`![${iconName}](${hoverIconUri.toString()}|height=32)`);
-							}
-
-							// Hover range covers the matched entity &#x...;
-							const startCol = match.index;
-							const endCol = startCol + match[0].length;
-							const hoverRange = new vscode.Range(i, startCol, i, endCol);
-							hoverAnnotations.push({ range: hoverRange, hoverMessage: markdownString });
-
-							// Since we decorated the line based on this entity,
-							// break the inner 'while' loop to avoid adding multiple gutter icons
-							// if the same line contains multiple entities (we only decorate the line once based on the first found entity).
-							break;
-						} else {
-							console.warn(`iconfont-for-human: Found HTML entity ${match[0]} mapped to icon ${iconName}, but no matching SVG symbol found.`);
-						}
+						// Add inline decoration for the HTML entity range
+						addInlineDecoration(iconName, range, fullEntity);
+						// Reset regex lastIndex to find overlapping/multiple matches on the same line if needed?
+						// htmlEntityRegex.lastIndex = startIndex + 1; // Careful with loops
 					}
 				}
+				// Reset regex after searching the line
+				htmlEntityRegex.lastIndex = 0;
 			}
 		}
 
-		console.log(`iconfont-for-human: Preparing to apply ${gutterDecorationsToApply.size} types of gutter decorations and ${hoverAnnotations.length} hover annotations.`);
+		console.log(`iconfont-for-human: Applying ${gutterDecorationsToApply.size} gutter types, ${inlineDecorationsToApply.size} inline types, ${hoverAnnotations.length} CSS hovers.`);
 
-		// --- Apply Decorations --- 
-		const currentIconNames = new Set(gutterDecorationsToApply.keys());
+		// --- Apply Decorations ---
+		const currentGutterIconNames = new Set(gutterDecorationsToApply.keys());
+		const currentInlineIconNames = new Set(inlineDecorationsToApply.keys());
 
-		// Clear decorations for icon types that are no longer present in the current view
-		for (const [iconName, decorationType] of iconDecorationTypes.entries()) {
-			if (!currentIconNames.has(iconName)) {
-				console.log(`iconfont-for-human: Clearing decorations for unused type: ${iconName}`);
+		// Clear decorations for unused GUTTER icon types
+		for (const [iconName, decorationType] of gutterIconDecorationTypes.entries()) {
+			if (!currentGutterIconNames.has(iconName)) {
+				// console.log(`iconfont-for-human: Clearing decorations for unused gutter type: ${iconName}`);
 				activeEditor.setDecorations(decorationType, []);
+				// Optionally dispose the type if it's unlikely to be reused soon?
+				// decorationType.dispose();
+				// gutterIconDecorationTypes.delete(iconName);
+			}
+		}
+		// Clear decorations for unused INLINE icon types
+		for (const [iconName, decorationType] of inlineIconDecorationTypes.entries()) {
+			if (!currentInlineIconNames.has(iconName)) {
+				// console.log(`iconfont-for-human: Clearing decorations for unused inline type: ${iconName}`);
+				activeEditor.setDecorations(decorationType, []);
+				// Optionally dispose
+				// decorationType.dispose();
+				// inlineIconDecorationTypes.delete(iconName);
 			}
 		}
 
-		// Apply new/updated gutter decorations
+		// Apply new/updated GUTTER decorations (CSS)
 		for (const [iconName, decorationOptionsArray] of gutterDecorationsToApply.entries()) {
-			const decorationType = iconDecorationTypes.get(iconName);
+			const decorationType = gutterIconDecorationTypes.get(iconName);
 			if (decorationType) {
 				activeEditor.setDecorations(decorationType, decorationOptionsArray);
 			} else {
@@ -476,11 +524,26 @@ export async function activate(context: vscode.ExtensionContext) {
 			}
 		}
 
-		// Apply hover annotations using the single hover type
-		if (hoverAnnotationDecorationType) {
+		// Apply new/updated INLINE decorations (Code)
+		for (const [iconName, decorationOptionsArray] of inlineDecorationsToApply.entries()) {
+			const decorationType = inlineIconDecorationTypes.get(iconName);
+			if (decorationType) {
+				activeEditor.setDecorations(decorationType, decorationOptionsArray);
+			} else {
+				console.warn(`iconfont-for-human: Inline decoration type for ${iconName} not found during application.`);
+			}
+		}
+
+		// Apply CSS hover annotations using the single hover type (Only for CSS content rules)
+		// Note: Inline icons handle their hover via their own decoration options
+		if (hoverAnnotationDecorationType && hoverAnnotations.length > 0) {
 			activeEditor.setDecorations(hoverAnnotationDecorationType, hoverAnnotations);
 		} else {
-			console.error("iconfont-for-human: Hover annotation decoration type not initialized!");
+			// Clear previous hover annotations if none are needed now
+			if (hoverAnnotationDecorationType) {
+				activeEditor.setDecorations(hoverAnnotationDecorationType, []);
+			}
+			// console.log("iconfont-for-human: No CSS hover annotations to apply or type not init.");
 		}
 
 		console.log("iconfont-for-human: Decorations updated.");
