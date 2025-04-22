@@ -6,45 +6,44 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 
-// --- Function to create a placeholder SVG data URI ---
-// Accepts icon name/id and optional unicode
+// --- 全局变量和类型定义 ---
 
-// --- REMOVED global defaultGutterIcon and iconDecorationType ---
-// const defaultGutterIcon = createPlaceholderSvgUri('line', '');
-// const iconDecorationType = vscode.window.createTextEditorDecorationType({ ... });
-
-// Map to store icon class names and their corresponding unicode
+// 存储图标 CSS 类名 => Unicode 映射 (来自 iconfont.css)
 let iconMap = new Map<string, string>();
-// Map to store SVG path data from iconfont.js
+// 存储图标 ID => SVG <symbol> 内部内容的映射 (来自 iconfont.js)
 let svgPathMap = new Map<string, string>();
-// Map to store Unicode hex value back to icon name
+// 存储 Unicode 十六进制值 => 图标名称的反向映射 (用于 HTML 实体查找)
 let unicodeToIconNameMap = new Map<string, string>();
-// Map to store dynamically created decoration types for Gutter icons (CSS)
+// 存储 Gutter 图标的 DecorationType (Key: iconName)
 let gutterIconDecorationTypes = new Map<string, vscode.TextEditorDecorationType>();
-// Map to store dynamically created decoration types for Inline icons (Code)
+// 存储内联替换图标的 DecorationType (Key: iconName)
 let inlineIconDecorationTypes = new Map<string, vscode.TextEditorDecorationType>();
-// Separate decoration type for hover annotations (invisible for triggering)
+// 用于 CSS 文件中 `content` 属性悬停提示的 DecorationType (本身不可见)
 let hoverAnnotationDecorationType: vscode.TextEditorDecorationType;
-// Map to store info for context menu commands, mapping content line number to icon info
+
+// CSS 图标的右键菜单信息接口
 interface IconInfo {
 	iconName: string;
 	iconUnicode: string | undefined;
-	ruleLine: number;
-	contentLine: number;
+	ruleLine: number; // CSS 规则选择器所在的行 (0-based)
+	contentLine: number; // CSS `content` 属性所在的行 (0-based)
 }
+// CSS `content` 行号 => IconInfo 映射 (用于右键菜单)
 let contentLineToIconInfoMap = new Map<number, IconInfo>();
 
-// Map to store info for hover provider, mapping range string to icon details
+// 内联图标的悬停提示信息接口
 interface InlineIconHoverInfo {
 	iconName: string;
-	originalText: string; // e.g., "icon-name" or "&#xe631;"
-	range: vscode.Range;
+	originalText: string; // 例如 "icon-name" 或 "&#xe631;"
+	range: vscode.Range; // 图标在代码中的精确范围
 }
-// Key: `${doc.uri.toString()}#${range.start.line}:${range.start.character}-${range.end.character}`
-// Value: InlineIconHoverInfo
+// 范围标识符 => InlineIconHoverInfo 映射 (用于 HoverProvider)
+// Key 格式: `${文档 URI}#${起始行}:${起始字符}-${结束字符}`
 let decoratedRangeToIconInfoMap = new Map<string, InlineIconHoverInfo>();
 
-// --- Function to parse iconfont.js and extract SVG data ---
+// --- 文件解析函数 ---
+
+// 解析 iconfont.js, 提取 SVG <symbol> 内容
 async function parseIconFontJs() {
 	const jsFiles = await vscode.workspace.findFiles('**/iconfont.js', '**/node_modules/**', 1);
 	if (jsFiles.length === 0) {
@@ -74,14 +73,6 @@ async function parseIconFontJs() {
 		while ((symbolMatch = symbolRegex.exec(svgContent)) !== null) {
 			const [fullMatch, id, content] = symbolMatch;
 			
-			// 从 symbol 内容中提取 path (旧逻辑)
-			// const pathMatch = content.match(/<path.+?d="([^"]+)"/);
-			// if (pathMatch) {
-			// 	const path = pathMatch[1];
-			// 	svgPathMap.set(id, path);
-			// 	console.log(`iconfont-for-human: Found icon: ${id}`);
-			// }
-
 			// 新逻辑：存储 symbol 的完整内部内容
 			if (id && content) {
 				svgPathMap.set(id, content.trim()); // Store the inner content of the symbol
@@ -362,16 +353,13 @@ export async function activate(context: vscode.ExtensionContext) {
 							const hoverIconUri = createSvgUri(iconName); // Re-create/get URI for hover
 							const markdownString = new vscode.MarkdownString();
 							markdownString.isTrusted = true; // Enable potential command URIs or complex rendering
-							markdownString.appendMarkdown(`**Icon:** \`${iconName}\`\\n\\n`);
+							markdownString.appendMarkdown(`**Icon:** \`${iconName}\`\n`);
 							if (iconUnicode) {
-								markdownString.appendMarkdown(`**Unicode:** \`\\\\${iconUnicode}\`\\n\\n`); // Use original CSS format for display
+								markdownString.appendMarkdown(`**CSS Code:** \`\\${iconUnicode}\`\n`);
 							}
-							if (hoverIconUri.scheme === 'data') {
-								markdownString.appendMarkdown(`![${iconName}](${hoverIconUri.toString()}|height=32)`);
-							}
-							markdownString.appendMarkdown(`\\n\\n*CSS rule starts on line ${i + 1}*`);
+							markdownString.appendMarkdown(`*CSS 规则定义在第 ${i + 1} 行*`);
 
-							// Find the exact range of the content string (e.g., '\\e600') on the target line
+							// Find the exact range of the content string (e.g., '\e600') on the target line
 							const contentLineText = doc.lineAt(targetLine).text;
 							const contentRegex = /content:\s*(['"])(\\?[a-fA-F0-9]+)\1/;
 							const match = contentLineText.match(contentRegex);
@@ -411,7 +399,9 @@ export async function activate(context: vscode.ExtensionContext) {
 			// Regex for Icon Name in props: name="icon-..." or name='icon-...' or name={"icon-..."} etc.
 			// This regex captures the icon name inside quotes/braces following `name=`
 			// It's simplified and might need adjustments for complex cases.
-			const iconNamePropRegex = /name=(?:["']|\{["'])(icon-[a-zA-Z0-9_-]+)(?:["']|\}["'])/g;
+			// Updated Regex: Tries to ensure it's within an <Icon ...> tag context on the same line.
+			// Supports icon-, 1-, 1.5- prefixes
+			const iconNamePropRegex = /name=(?:["']|\{["'])((?:icon-|1-|1\.5-)[a-zA-Z0-9_-]+)(?:["']|\}["'])/g;
 
 			// Helper function to add inline decoration
 			const addInlineDecoration = (iconName: string, range: vscode.Range, hoverText: string) => {
