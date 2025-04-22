@@ -424,7 +424,7 @@ export async function activate(context: vscode.ExtensionContext) {
 							const newInlineType = vscode.window.createTextEditorDecorationType({
 								after: {
 									contentIconPath: iconUri,
-									margin: '0 0 0 0.3em',
+									margin: '0 0 0 0.2em',
 								},
 								// Restore hiding original text and keep alignment attempt
 							});
