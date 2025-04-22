@@ -22,8 +22,28 @@
       {
         "command": "iconfont-for-human.helloWorld",
         "title": "Hello World"
+      },
+      {
+        "command": "iconfont-for-human.copyIconName",
+        "title": "ifh: 复制图标名称"
+      },
+      {
+        "command": "iconfont-for-human.copyIconCode",
+        "title": "ifh: 复制图标 Unicode"
       }
-    ]
+    ],
+    "menus": {
+      "editor/lineNumber/context": [
+        {
+          "command": "iconfont-for-human.copyIconName",
+          "group": "iconfont@1"
+        },
+        {
+          "command": "iconfont-for-human.copyIconCode",
+          "group": "iconfont@2"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "pnpm run compile",

@@ -21,6 +21,14 @@ let svgPathMap = new Map<string, string>();
 let iconDecorationTypes = new Map<string, vscode.TextEditorDecorationType>();
 // Separate decoration type for hover annotations (invisible)
 let hoverAnnotationDecorationType: vscode.TextEditorDecorationType;
+// Map to store info for context menu commands, mapping content line number to icon info
+interface IconInfo {
+	iconName: string;
+	iconUnicode: string | undefined;
+	ruleLine: number;
+	contentLine: number;
+}
+let contentLineToIconInfoMap = new Map<number, IconInfo>();
 
 // --- Function to parse iconfont.js and extract SVG data ---
 async function parseIconFontJs() {
@@ -87,10 +95,14 @@ async function parseIconFontJs() {
 // Accepts iconId (without prefix) and optional unicode
 // Note: This function might not be directly used if only gutter icons are needed per line,
 // but keep it for potential hover message usage or inline icons.
-function createSvgUri(iconId: string, unicode?: string): vscode.Uri {
-	const svgPath = svgPathMap.get(iconId); // Look up using ID directly
+function createSvgUri(iconIdFromMap: string, unicode?: string): vscode.Uri {
+	// iconIdFromMap is likely 'icon-xxx' from the iconMap
+	const idWithoutPrefix = iconIdFromMap.replace(/^icon-/, '');
+	// Try getting path without prefix first (more common), then with prefix
+	const svgPath = svgPathMap.get(idWithoutPrefix) || svgPathMap.get(iconIdFromMap);
 
 	if (!svgPath) {
+		console.warn(`iconfont-for-human: SVG path not found in svgPathMap for ${iconIdFromMap} or ${idWithoutPrefix}`);
 		return vscode.Uri.parse(''); // Return empty URI if no path is found
 	}
 
@@ -127,39 +139,30 @@ async function findAndParseIconfontCss() {
 
 	if (cssFiles.length === 0) {
 		console.log('iconfont-for-human: No iconfont.css found in the workspace.');
-		// Optionally show a message to the user
-		// vscode.window.showWarningMessage('iconfont-for-human: Could not find iconfont.css.');
 		return;
 	}
 
-	// For simplicity, use the first found file. Might need refinement later.
 	const cssPath = cssFiles[0].fsPath;
 	console.log(`iconfont-for-human: Found iconfont.css at ${cssPath}`);
 
 	try {
 		const cssContent = await fs.promises.readFile(cssPath, 'utf8');
-		// Regex to find `.icon-xxx:before { content: '\xxxx'; }`
-		// Improved slightly to handle potential spaces and optional quotes
 		const iconRegex = /\.([a-zA-Z0-9_-]+)::?before\s*{\s*content:\s*['"]?(\\[a-fA-F0-9]+)['"]?;?\s*}/g;
 		let match;
 		while ((match = iconRegex.exec(cssContent))) {
-			const iconName = match[1]; // e.g., 'icon-star'
-			const iconUnicode = match[2].substring(1); // e.g., 'e600' (remove the backslash)
+			const iconName = match[1]; // e.g., 'icon-star' (always use the name from CSS class)
+			const iconUnicode = match[2].substring(1);
 			if (iconName && iconUnicode) {
-				// Check if this icon name exists in the SVG map before adding to iconMap
-				if (svgPathMap.has(iconName)) {
-					iconMap.set(iconName, iconUnicode);
+				// Check if SVG path exists either without prefix (common) or with prefix
+				const idWithoutPrefix = iconName.replace(/^icon-/, '');
+				if (svgPathMap.has(idWithoutPrefix) || svgPathMap.has(iconName)) {
+					iconMap.set(iconName, iconUnicode); // Store with original CSS class name as key
 				} else {
-					console.warn(`iconfont-for-human: Icon "${iconName}" found in CSS but not in iconfont.js SVG symbols.`);
+					console.warn(`iconfont-for-human: Icon class "${iconName}" found in CSS but no matching SVG symbol found (checked ID: ${idWithoutPrefix} and ${iconName}).`);
 				}
 			}
 		}
 		console.log(`iconfont-for-human: Parsed ${iconMap.size} usable icons from ${cssPath}`);
-		// Trigger decoration update AFTER parsing - Removed from here
-		// const activeEditor = vscode.window.activeTextEditor;
-		// if (activeEditor) {
-		// 	updateDecorations(); // Call update after successful parsing
-		// }
 	} catch (error) {
 		console.error(`iconfont-for-human: Error reading or parsing ${cssPath}:`, error);
 		vscode.window.showErrorMessage(`iconfont-for-human: Failed to parse ${cssPath}. See console for details.`);
@@ -189,7 +192,14 @@ function disposeDecorationTypes(editor?: vscode.TextEditor) {
 		hoverAnnotationDecorationType.dispose();
 		// hoverAnnotationDecorationType = undefined; // Optional: reset variable
 	}
+	// Clear context menu info map
+	contentLineToIconInfoMap.clear();
 	console.log('iconfont-for-human: Disposed existing decoration types.');
+}
+
+// --- Function to find icon info based on content line (for context menu) ---
+function findIconInfoForLine(targetLine: number): IconInfo | undefined {
+	return contentLineToIconInfoMap.get(targetLine);
 }
 
 // This method is called when your extension is activated
@@ -220,11 +230,11 @@ export async function activate(context: vscode.ExtensionContext) {
 
 		const doc = activeEditor.document;
 		const lineCount = doc.lineCount;
-		// Map to store Gutter Icon DecorationOptions grouped by icon name
 		let gutterDecorationsToApply = new Map<string, vscode.DecorationOptions[]>();
-		// Array to store Hover Annotation DecorationOptions
 		let hoverAnnotations: vscode.DecorationOptions[] = [];
-		const decoratedContentLines = new Set<number>(); // Track decorated content lines per update
+		const decoratedContentLines = new Set<number>();
+		// Clear the map for context menu info at the start of each update
+		contentLineToIconInfoMap.clear();
 
 		// Iterate through all lines
 		for (let i = 0; i < lineCount; i++) {
@@ -248,8 +258,17 @@ export async function activate(context: vscode.ExtensionContext) {
 					// If we found a content line nearby and it hasn't been decorated yet
 					if (contentLineFound !== -1 && !decoratedContentLines.has(contentLineFound)) {
 						const targetLine = contentLineFound;
-						decoratedContentLines.add(targetLine); // Mark this content line as decorated for this pass
-						const range = new vscode.Range(targetLine, 0, targetLine, 1); // Range for both gutter and hover
+						decoratedContentLines.add(targetLine);
+
+						// --- Store info for context menu --- 
+						const iconUnicodeForInfo = iconMap.get(iconName);
+						const iconInfo: IconInfo = {
+							iconName: iconName,
+							iconUnicode: iconUnicodeForInfo,
+							ruleLine: i,
+							contentLine: targetLine
+						};
+						contentLineToIconInfoMap.set(targetLine, iconInfo);
 
 						// --- Prepare Gutter Icon Decoration --- 
 						// Ensure a decoration type exists for this icon
@@ -280,7 +299,8 @@ export async function activate(context: vscode.ExtensionContext) {
 							gutterDecorationsToApply.set(iconName, gutterOptionsArray);
 						}
 						// Add options for the gutter icon (range only, hover handled separately)
-						gutterOptionsArray.push({ range: range });
+						const gutterRange = new vscode.Range(targetLine, 0, targetLine, 1);
+						gutterOptionsArray.push({ range: gutterRange });
 
 						// --- Prepare Hover Annotation --- 
 						const iconUnicode = iconMap.get(iconName);
@@ -296,14 +316,36 @@ export async function activate(context: vscode.ExtensionContext) {
 						}
 						markdownString.appendMarkdown(`\\n\\n*CSS rule starts on line ${i + 1}*`);
 
-						// Add options for the hover annotation (same range, but with hoverMessage)
-						hoverAnnotations.push({
-							range: range,
-							hoverMessage: markdownString
-						});
+						// Find the exact range of the content string (e.g., '\\e600') on the target line
+						const contentLineText = doc.lineAt(targetLine).text;
+						const contentRegex = /content:\s*(['"])(\\?[a-fA-F0-9]+)\1/;
+						const match = contentLineText.match(contentRegex);
+						let hoverRange: vscode.Range | undefined = undefined;
 
-						// Break the inner loop (iconName) to move to the next line (i).
-						break;
+						if (match && match.index !== undefined) {
+							// Calculate start and end columns based on the match
+							// match[0] is the full match (e.g., content: '\e600')
+							// We want the range of the quoted part including quotes
+							const quoteStartIndex = contentLineText.indexOf(match[1], match.index);
+							if (quoteStartIndex !== -1) {
+								const stringContent = match[2]; // The actual content like \e600 or e600
+								const startColumn = quoteStartIndex;
+								const endColumn = startColumn + match[1].length + stringContent.length + match[1].length; // start quote + content + end quote
+								hoverRange = new vscode.Range(targetLine, startColumn, targetLine, endColumn);
+							}
+						}
+
+						// Add hover annotation only if we found the specific range
+						if (hoverRange) {
+							hoverAnnotations.push({
+								range: hoverRange, 
+								hoverMessage: markdownString
+							});
+						} else {
+							console.warn(`iconfont-for-human: Could not find content string range on line ${targetLine + 1} for icon ${iconName}.`);
+						}
+
+						break; // Found icon association for this line i
 					}
 				}
 			}
@@ -432,15 +474,56 @@ export async function activate(context: vscode.ExtensionContext) {
 	});
 	context.subscriptions.push(disposable);
 
+	// --- 命令 1: 复制图标名称 ---
+	let copyNameDisposable = vscode.commands.registerCommand('iconfont-for-human.copyIconName', () => {
+		const editor = vscode.window.activeTextEditor;
+		if (!editor) return;
+		const position = editor.selection.active;
+		const lineNumber = position.line; // 右键点击的行 (0-indexed)
+
+		const iconInfo = findIconInfoForLine(lineNumber); // Use the map lookup
+
+		if (iconInfo) {
+			vscode.env.clipboard.writeText(iconInfo.iconName);
+			vscode.window.showInformationMessage(`已复制图标名称: ${iconInfo.iconName}`);
+		} else {
+			vscode.window.showWarningMessage(`未能在行 ${lineNumber + 1} 找到关联的 Iconfont 图标信息。`);
+		}
+	});
+	context.subscriptions.push(copyNameDisposable);
+
+	// --- 命令 2: 复制图标 Unicode ---
+	let copyCodeDisposal = vscode.commands.registerCommand('iconfont-for-human.copyIconCode', () => {
+		const editor = vscode.window.activeTextEditor;
+		if (!editor) return;
+		const position = editor.selection.active;
+		const lineNumber = position.line; // 右键点击的行 (0-indexed)
+
+		const iconInfo = findIconInfoForLine(lineNumber); // Use the map lookup
+
+		if (iconInfo && iconInfo.iconUnicode) {
+            // Format the Unicode as HTML entity &#xXXXX;
+            const htmlEntityString = `&#x${iconInfo.iconUnicode};`;
+			vscode.env.clipboard.writeText(htmlEntityString);
+			vscode.window.showInformationMessage(`已复制 HTML 实体: ${htmlEntityString}`);
+		} else if (iconInfo) {
+            vscode.window.showWarningMessage(`图标 ${iconInfo.iconName} 未找到关联的 Unicode。`);
+        } else {
+			vscode.window.showWarningMessage(`未能在行 ${lineNumber + 1} 找到关联的 Iconfont 图标信息。`);
+		}
+	});
+	context.subscriptions.push(copyCodeDisposal);
+
 } // End of activate
 
 // This method is called when your extension is deactivated
 export function deactivate() {
 	console.log('iconfont-for-human: Deactivating extension.');
 	// Dispose all decoration types (disposeDecorationTypes handles both now)
-	disposeDecorationTypes();
-	// Clear maps
+	disposeDecorationTypes(); // This will also clear contentLineToIconInfoMap
+	// Clear maps (already done in dispose, but belt-and-suspenders)
 	iconMap.clear();
 	svgPathMap.clear();
+	contentLineToIconInfoMap.clear(); // Explicit clear here too
 }
 
