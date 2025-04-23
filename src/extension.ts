@@ -916,7 +916,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	// Example command remains
 	let disposable = vscode.commands.registerCommand('iconfont-for-human.helloWorld', () => {
-		vscode.window.showInformationMessage('Hello World from iconfont-for-human!');
+		vscode.window.showInformationMessage('你好，来自 iconfont-for-human！');
 	});
 	context.subscriptions.push(disposable);
 
@@ -1109,7 +1109,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	const copyNameFromHoverCommand = vscode.commands.registerCommand('iconfont-for-human.copyIconNameFromHover', (args: { iconName: string }) => {
 		if (args && args.iconName) {
 			vscode.env.clipboard.writeText(args.iconName);
-			vscode.window.showInformationMessage(`Copied Name: ${args.iconName}`);
+			vscode.window.showInformationMessage(`已复制名称: ${args.iconName}`);
 		}
 	});
 	context.subscriptions.push(copyNameFromHoverCommand);
@@ -1117,7 +1117,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	const copyIconComponentFromHoverCommand = vscode.commands.registerCommand('iconfont-for-human.copyIconComponentFromHover', (args: { component: string }) => {
 		if (args && args.component) {
 			vscode.env.clipboard.writeText(args.component);
-			vscode.window.showInformationMessage(`Copied Icon: ${args.component}`);
+			vscode.window.showInformationMessage(`已复制图标组件: ${args.component}`);
 		}
 	});
 	context.subscriptions.push(copyIconComponentFromHoverCommand);
@@ -1125,7 +1125,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	const copyCodeFromHoverCommand = vscode.commands.registerCommand('iconfont-for-human.copyIconCodeFromHover', (args: { originalText: string }) => {
 		if (args && args.originalText) {
 			vscode.env.clipboard.writeText(args.originalText);
-			vscode.window.showInformationMessage(`Copied Code: ${args.originalText}`);
+			vscode.window.showInformationMessage(`已复制 Code: ${args.originalText}`);
 		}
 	});
 	context.subscriptions.push(copyCodeFromHoverCommand);
