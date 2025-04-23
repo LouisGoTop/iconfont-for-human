@@ -1,71 +1,65 @@
 # iconfont-for-human README
 
-This is the README for your extension "iconfont-for-human". After writing up a brief description, we recommend including the following sections.
+[![版本](https://img.shields.io/badge/version-0.0.1-blue.svg)](https://marketplace.visualstudio.com/items?itemName=your-publisher-id.iconfont-for-human) <!-- 请替换 your-publisher-id -->
 
-## Features
+让你的 Iconfont 图标在 VS Code 中变得生动起来！ `iconfont-for-human` 旨在增强使用 [iconfont.cn](https://www.iconfont.cn/) 项目时的开发体验。
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+## 主要功能 ✨
 
-For example if there is an image subfolder under your extension project workspace:
+本插件会自动检测你项目中的 `iconfont.css` 和 `iconfont.js` 文件，并提供以下实用功能：
 
-\!\[feature X\]\(images/feature-x.png\)
+1.  **CSS 图标预览 (Gutter):**
+    *   在 CSS、SCSS、Less、Stylus 文件中，当你定义 `content` 属性时，会在行号旁边（Gutter 区域）显示对应图标的 SVG 预览。
+    *   ![CSS Gutter 预览](placeholder.png) <!-- 建议替换为实际截图 -->
 
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+2.  **代码内联图标预览:**
+    *   在 JavaScript (.js, .jsx)、TypeScript (.ts, .tsx) 和 HTML 文件中：
+        *   直接渲染 `name="icon-xxx"` (或其他前缀如 `1-`、`1.5-`) 属性值旁边的图标。
+        *   直接渲染 `&#xe600;` 这样的 HTML 实体字符旁边的图标。
+    *   ![内联图标预览](placeholder.png) <!-- 建议替换为实际截图 -->
 
-## Requirements
+3.  **丰富的悬停提示:**
+    *   当鼠标悬停在代码中的内联图标（`name="icon-xxx"` 或 `&#xeabc;`）上时：
+        *   显示一个**更大**的图标预览图。
+        *   展示图标的名称 (`icon-xxx`) 和对应的 HTML 实体代码 (`&#xeabc;`)。
+        *   提供**一键复制**命令：
+            *   🚀 复制图标名称
+            *   🚀 复制 React/Vue 组件代码片段 (`<Icon name="icon-xxx" />`)
+            *   ~~复制 HTML 实体 Code~~ (即将废弃)
+        *   提供**一键转换**命令 (当悬停在 HTML 实体上时):
+            *   🚀🚀 **一键转换组件 name**: 将 `code="&#xeabc;"` 替换为 `name="icon-xxx"`。
+            *   🚀🚀🚀 **一键转换为 Icon 组件**: 将 `&#xeabc;` 替换为 `<Icon name="icon-xxx" />`。
+    *   ![悬停提示](placeholder.png) <!-- 建议替换为实际截图 -->
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+4.  **CSS 右键快捷操作:**
+    *   在 CSS 类文件中，右键点击 `content` 属性所在行的行号：
+        *   快速复制图标名称 (`icon-xxx`)。
+        *   快速复制图标的 HTML 实体 (`&#xeabc;`)。
 
-## Extension Settings
+5.  **字体文件预览器:**
+    *   直接在 VS Code 中打开 `.ttf`, `.otf`, `.woff`, `.woff2`, `.eot` 字体文件。
+    *   预览器会显示字体包含的所有字形 (Glyph) 及其 Unicode 和名称。
+    *   ![字体预览](placeholder.png) <!-- 建议替换为实际截图 -->
 
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
+6.  **自动更新:**
+    *   实时监听 `iconfont.css` 和 `iconfont.js` 文件的变化，自动重新解析并更新预览。
+    *   当 VS Code 主题更改时，也会尝试更新图标颜色以适应新主题。
 
-For example:
+## 使用要求 📋
 
-This extension contributes the following settings:
+*   项目中需要包含从 iconfont.cn 下载的 `iconfont.css` 文件。
+*   项目中需要包含从 iconfont.cn 下载的 `iconfont.js` 文件 (包含 SVG symbol 定义)。
 
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
+## 已知问题 🤔
 
-## Known Issues
+*   暂无
 
-Calling out known issues can help limit users opening duplicate issues against your extension.
+## 发布日志 🚀
 
-## Release Notes
+### 0.0.1
 
-Users appreciate release notes as you update your extension.
-
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
+*   初始版本发布，包含上述主要功能。
 
 ---
 
-## Following extension guidelines
-
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
-
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
-
-## Working with Markdown
-
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
-
-## For more information
-
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy!**
+**请享受使用！ 👍**
