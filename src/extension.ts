@@ -983,17 +983,15 @@ export async function activate(context: vscode.ExtensionContext) {
 			if (matchedInfo) {
 				const markdown = new vscode.MarkdownString();
 				markdown.isTrusted = true; // IMPORTANT: Allows commands to be executed
+				markdown.supportHtml = true;
 
 				// Get the icon URI for display
 				const iconUri = createSvgUri(matchedInfo.iconName);
 
 				// Add the large icon image at the top using HTML img tag for better control
 				if (iconUri.scheme === 'data') {
-					// Use the original text (HTML entity) as src to let browser render it initially
-					// If the entity is the primary source, might need a placeholder or direct SVG.
-					// Using name for alt text seems reasonable.
-					// Removed image display as it might interfere with hover behavior or clarity
-					// markdown.appendMarkdown(`<img src="${matchedInfo.originalText}" alt="${matchedInfo.iconName}" />\n\n`);
+					// 将当前代码
+					markdown.appendMarkdown(`![${matchedInfo.iconName}](${iconUri.toString(true)}|width=70|height=70)\n\n`);
 				}
 
 				// Command arguments need to be URI-encoded JSON strings
