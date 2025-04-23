@@ -991,7 +991,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				// Add the large icon image at the top using HTML img tag for better control
 				if (iconUri.scheme === 'data') {
 					// 将当前代码
-					markdown.appendMarkdown(`![${matchedInfo.iconName}](${iconUri.toString(true)}|width=70|height=70)\n\n`);
+					markdown.appendMarkdown(`![${matchedInfo.iconName}](${iconUri.toString(true)}|width=80|height=80)\n\n`);
 				}
 
 				// Command arguments need to be URI-encoded JSON strings

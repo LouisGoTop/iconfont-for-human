@@ -96,7 +96,7 @@ body {
   word-break: break-all;
   /* Prevent long names from overflowing */
   background-color: var(--vscode-input-background, #fff);
-  border: 1px solid var(--vscode-input-border, #ccc);
+  border: 1px solid var(--vscode-input-border, #f3f3f3);
   color: var(--vscode-input-foreground, #333);
 }
 
@@ -133,7 +133,7 @@ body {
   background-color: var(--vscode-editor-background, #fff);
   z-index: 10;
   /* 添加更清晰的底部边框 */
-  border-bottom: 1px solid var(--vscode-editorGroup-border, rgba(128, 128, 128, 0.35));
+  border-bottom: 1px solid var(--vscode-input-border, #f3f3f3);
   /* 轻微阴影增加层次感 */
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
@@ -149,7 +149,7 @@ body {
   padding: 10px 12px;
   /* 增加输入框内边距 */
   box-sizing: border-box;
-  border: 1px solid var(--vscode-input-border, #ccc);
+  border: 1px solid var(--vscode-editorGroup-border, rgba(128, 128, 128, 0.35));
   background-color: var(--vscode-input-background, #fff);
   color: var(--vscode-input-foreground, #000);
   border-radius: 4px;
@@ -163,15 +163,15 @@ body {
 #search-input::placeholder {
   /* 样式占位符 */
   color: var(--vscode-input-placeholderForeground, #999);
-  opacity: 0.7;
+  opacity: 0.9;
 }
 
 #search-input:focus {
   /* 使用更明显的焦点样式 */
   outline: none;
   /* 移除默认轮廓 */
-  border-color: var(--vscode-focusBorder, #007acc);
-  box-shadow: 0 0 0 1px var(--vscode-focusBorder, #007acc),
+  border: 1px solid var(--vscode-editorGroup-border, rgba(128, 128, 128, 0.35));
+  box-shadow: 0 0 0 1px var(--vscode-editorGroup-border, #007acc),
     /* 模拟 VS Code 的焦点边框 */
     0 2px 6px rgba(0, 122, 204, 0.2);
   /* 添加轻微光晕 */
