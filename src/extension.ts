@@ -418,7 +418,7 @@ async function sendFontDataToWebviewFromUri(uri: vscode.Uri, webview: vscode.Web
 
 		if (suffix == 'woff2') {
 			// result = openType.parse(buffer.buffer)
-			await Font.woff2.init(fileBuffer)
+			await Font.woff2.init(fileBuffer);
 		}
 
 		// --- 新增：在后端解析字体 ---
@@ -651,7 +651,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			// Helper function to add inline decoration
 			const addInlineDecoration = (iconName: string, range: vscode.Range, hoverText: string) => {
 				const rangeString = `${range.start.line}:${range.start.character}-${range.end.character}`;
-				if (decoratedInlineRanges.has(rangeString)) return; // Avoid decorating same range twice
+				if (decoratedInlineRanges.has(rangeString)) {return;} // Avoid decorating same range twice
 
 				// Verify SVG path exists
 				const idWithoutPrefix = iconName.replace(/^icon-/, '');
@@ -665,14 +665,10 @@ export async function activate(context: vscode.ExtensionContext) {
 					try {
 						const iconUri = createSvgUri(iconName);
 						if (iconUri.scheme === 'data') {
-							// Use 'after' as per user change, simplify styling
+							// 修改：将 after 改为 gutterIconPath
 							const newInlineType = vscode.window.createTextEditorDecorationType({
-								after: {
-									contentIconPath: iconUri,
-									margin: '0 0 0 0.2em', // 左侧边距
-								},
-								isWholeLine: false,
-								rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
+								gutterIconPath: iconUri,
+								gutterIconSize: 'contain'
 							});
 							inlineIconDecorationTypes.set(iconName, newInlineType);
 						} else {
@@ -714,10 +710,10 @@ export async function activate(context: vscode.ExtensionContext) {
 					const fullMatchText = iconNamePropMatch[0]; // e.g., name="icon-home"
 					const matchStartIndex = iconNamePropMatch.index;
 					// Need null check for index
-					if (matchStartIndex === undefined) continue;
+					if (matchStartIndex === undefined) {continue;}
 
 					const iconNameStartIndex = doc.lineAt(i).text.indexOf(iconName, matchStartIndex);
-					if (iconNameStartIndex === -1) continue; // Should not happen based on regex, but safety check
+					if (iconNameStartIndex === -1) {continue;} // Should not happen based on regex, but safety check
 
 					const iconNameEndIndex = iconNameStartIndex + iconName.length;
 					// Decorate the range of the icon name *inside* the quotes/braces
@@ -739,7 +735,7 @@ export async function activate(context: vscode.ExtensionContext) {
 					const fullEntity = htmlEntityMatch[0]; // e.g., &#xe600;
 					const startIndex = htmlEntityMatch.index;
 					// Need null check for index
-					if (startIndex === undefined) continue;
+					if (startIndex === undefined) {continue;}
 
 					const endIndex = startIndex + fullEntity.length;
 					const range = new vscode.Range(i, startIndex, i, endIndex);
@@ -923,7 +919,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	// --- 命令 1: 复制图标名称 ---
 	let copyNameDisposable = vscode.commands.registerCommand('iconfont-for-human.copyIconName', () => {
 		const editor = vscode.window.activeTextEditor;
-		if (!editor) return;
+		if (!editor) {return;}
 		const position = editor.selection.active;
 		const lineNumber = position.line; // 右键点击的行 (0-indexed)
 
@@ -941,7 +937,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	// --- 命令 2: 复制图标 Unicode ---
 	let copyCodeDisposal = vscode.commands.registerCommand('iconfont-for-human.copyIconCode', () => {
 		const editor = vscode.window.activeTextEditor;
-		if (!editor) return;
+		if (!editor) {return;}
 		const position = editor.selection.active;
 		const lineNumber = position.line; // 右键点击的行 (0-indexed)
 
@@ -1009,17 +1005,12 @@ export async function activate(context: vscode.ExtensionContext) {
 						}
 					}
 				}
-				const codeArgs = encodeURIComponent(JSON.stringify({ originalText: originalCode }));
 
 				// --- 修改："复制 Code" 命令和描述 ---
-				markdown.appendMarkdown(`[~~点击复制 Code~~](command:iconfont-for-human.copyIconCodeFromHover?${codeArgs} "Copy code as HTML entity")`);
-				markdown.appendMarkdown(`&nbsp;&nbsp;|&nbsp;&nbsp;`); // Separator
-				markdown.appendMarkdown(` \`${originalCode}\` ~~即将废弃~~ \n`); // 显示转换后的 code
-				markdown.appendMarkdown(`\n---\n\n`); // Horizontal rule with spacing
-
 				markdown.appendMarkdown(`[**🚀 点击复制 icon name**](command:iconfont-for-human.copyIconNameFromHover?${nameArgs} "Copy icon name")`);
 				markdown.appendMarkdown(`&nbsp;&nbsp;|&nbsp;&nbsp;`); // Separator
 				markdown.appendMarkdown(` \`${matchedInfo.iconName}\`\n`); // Single newline for closer info lines
+				markdown.appendMarkdown(` \`${originalCode}\`\n`); // Single newline for closer info lines
 				markdown.appendMarkdown(`\n---\n\n`); // Horizontal rule with spacing
 
 				markdown.appendMarkdown(`[**🚀 点击复制 Icon 组件**](command:iconfont-for-human.copyIconComponentFromHover?${componentArgs} "Copy icon component")`);
@@ -1029,45 +1020,50 @@ export async function activate(context: vscode.ExtensionContext) {
 
 				// --- 修改：处理 HTML 实体转换 ---
 				if (matchedInfo.originalText.startsWith('&#x')) {
-					// --- 关键修改：扩大范围以包含 code="..." ---
+					// --- 关键修改：扩大范围以包含 code="..." 或 code='...' ---
 					const lineText = document.lineAt(matchedInfo.range.start.line).text;
 					const entityStartIndex = matchedInfo.range.start.character;
 					const entityEndIndex = matchedInfo.range.end.character;
 
-					// 向前查找 'code="'
-					const codeAttrPrefix = 'code="';
+					// 向前查找 'code=' 和引号
+					const codeAttrPrefix = 'code=';
 					const codeAttrStartIndex = lineText.lastIndexOf(codeAttrPrefix, entityStartIndex);
 
-					let fullRangeStartChar = entityStartIndex; // Default to entity start if not found
+					let fullRangeStartChar = entityStartIndex;
 					if (codeAttrStartIndex !== -1) {
 						fullRangeStartChar = codeAttrStartIndex;
-					} else {
-						console.warn(`iconfont-for-human: Could not find 'code="' before entity on line ${matchedInfo.range.start.line + 1}`);
-						// Fallback or skip? Let's try to proceed but the replacement might be partial.
 					}
 
-					// 向后查找 '"' (实体后面的第一个引号)
-					const closingQuoteIndex = lineText.indexOf('"', entityEndIndex);
-					let fullRangeEndChar = entityEndIndex; // Default to entity end if not found
-					if (closingQuoteIndex !== -1) {
-						fullRangeEndChar = closingQuoteIndex + 1; // Include the closing quote
-					} else {
-						console.warn(`iconfont-for-human: Could not find closing quote after entity on line ${matchedInfo.range.start.line + 1}`);
-						// Fallback or skip? Let's try to proceed but the replacement might be partial.
+					// 获取引号类型（单引号或双引号）
+					let quoteChar = '"';
+					if (codeAttrStartIndex !== -1) {
+						const afterCodeAttr = lineText.substring(codeAttrStartIndex + codeAttrPrefix.length).trim();
+						if (afterCodeAttr.startsWith("'")) {
+							quoteChar = "'";
+						}
 					}
 
-					// 创建覆盖整个 code="..." 属性的范围
+					// 向后查找对应的引号
+					let fullRangeEndChar = entityEndIndex;
+					if (codeAttrStartIndex !== -1) {
+						const afterEntity = lineText.substring(entityEndIndex);
+						const closingQuoteIndex = afterEntity.indexOf(quoteChar);
+						if (closingQuoteIndex !== -1) {
+							fullRangeEndChar = entityEndIndex + closingQuoteIndex + 1;
+						}
+					}
+
+					// 创建覆盖整个 code="..." 或 code='...' 属性的范围
 					const fullAttributeRange = new vscode.Range(
 						matchedInfo.range.start.line,
 						fullRangeStartChar,
-						matchedInfo.range.end.line, // Assuming same line for now
+						matchedInfo.range.end.line,
 						fullRangeEndChar
 					);
-					// ------------------------------------------
 
 					const convertArgs = encodeURIComponent(JSON.stringify({
 						iconName: matchedInfo.iconName,
-						range: { // Pass the *full attribute* range information
+						range: {
 							startLine: fullAttributeRange.start.line,
 							startChar: fullAttributeRange.start.character,
 							endLine: fullAttributeRange.end.line,
