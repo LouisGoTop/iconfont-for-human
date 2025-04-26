@@ -22,7 +22,9 @@ export async function activate(context: vscode.ExtensionContext) {
     // 注册悬停提供器
     const hoverProvider = new IconHoverProvider(iconManager);
     context.subscriptions.push(
-        vscode.languages.registerHoverProvider(supportedCodeLangs, hoverProvider)
+        vscode.languages.registerHoverProvider(supportedCodeLangs, hoverProvider),
+        hoverProvider,
+        decorationManager
     );
 
     // 初始化装饰器类型

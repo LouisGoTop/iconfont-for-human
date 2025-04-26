@@ -4,7 +4,25 @@ import { createSvgUri } from '../utils';
 import { supportedCssLangs, supportedCodeLangs, ICON_PREFIXES } from '../config/constants';
 
 export class DecorationManager {
-    constructor(private iconManager: IconManager) {}
+    // 普通图标名称的边框装饰器（淡蓝色）
+    private nameHoverableDecoration: vscode.TextEditorDecorationType;
+    // HTML实体的边框装饰器（淡红色）
+    private entityHoverableDecoration: vscode.TextEditorDecorationType;
+
+    constructor(private iconManager: IconManager) {
+        // 初始化装饰器
+        this.nameHoverableDecoration = vscode.window.createTextEditorDecorationType({
+            border: '1px solid rgba(66, 153, 225, 0.6)', // 淡蓝色边框
+            borderRadius: '4px',
+            borderStyle: 'solid'
+        });
+
+        this.entityHoverableDecoration = vscode.window.createTextEditorDecorationType({
+            border: '1px solid rgba(225, 66, 66, 0.6)', // 淡红色边框
+            borderRadius: '4px',
+            borderStyle: 'solid'
+        });
+    }
 
     // 更新装饰器
     updateDecorations(editor: vscode.TextEditor): void {
@@ -17,6 +35,9 @@ export class DecorationManager {
         const gutterDecorationsToApply = new Map<string, vscode.DecorationOptions[]>();
         const inlineDecorationsToApply = new Map<string, vscode.DecorationOptions[]>();
         const hoverAnnotations: vscode.DecorationOptions[] = [];
+        // 分别存储不同类型的可悬停装饰
+        const nameHoverableDecorations: vscode.DecorationOptions[] = [];
+        const entityHoverableDecorations: vscode.DecorationOptions[] = [];
         const decoratedGutterLines = new Set<number>();
         const decoratedInlineRanges = new Set<string>();
 
@@ -24,19 +45,20 @@ export class DecorationManager {
         state.decoratedRangeToIconInfoMap.clear();
 
         if (supportedCssLangs.includes(doc.languageId)) {
-            this.processCssFile(doc, gutterDecorationsToApply, hoverAnnotations, decoratedGutterLines);
+            this.processCssFile(doc, gutterDecorationsToApply, hoverAnnotations, decoratedGutterLines, nameHoverableDecorations);
         } else if (supportedCodeLangs.includes(doc.languageId)) {
-            this.processCodeFile(doc, inlineDecorationsToApply, decoratedInlineRanges);
+            this.processCodeFile(doc, inlineDecorationsToApply, decoratedInlineRanges, nameHoverableDecorations, entityHoverableDecorations);
         }
 
-        this.applyDecorations(editor, gutterDecorationsToApply, inlineDecorationsToApply, hoverAnnotations);
+        this.applyDecorations(editor, gutterDecorationsToApply, inlineDecorationsToApply, hoverAnnotations, nameHoverableDecorations, entityHoverableDecorations);
     }
 
     private processCssFile(
         doc: vscode.TextDocument,
         gutterDecorationsToApply: Map<string, vscode.DecorationOptions[]>,
         hoverAnnotations: vscode.DecorationOptions[],
-        decoratedGutterLines: Set<number>
+        decoratedGutterLines: Set<number>,
+        nameHoverableDecorations: vscode.DecorationOptions[]
     ): void {
         const state = this.iconManager.getState();
         const lineCount = doc.lineCount;
@@ -63,7 +85,8 @@ export class DecorationManager {
                             doc,
                             gutterDecorationsToApply,
                             hoverAnnotations,
-                            decoratedGutterLines
+                            decoratedGutterLines,
+                            nameHoverableDecorations
                         );
                     }
                 }
@@ -74,7 +97,9 @@ export class DecorationManager {
     private processCodeFile(
         doc: vscode.TextDocument,
         inlineDecorationsToApply: Map<string, vscode.DecorationOptions[]>,
-        decoratedInlineRanges: Set<string>
+        decoratedInlineRanges: Set<string>,
+        nameHoverableDecorations: vscode.DecorationOptions[],
+        entityHoverableDecorations: vscode.DecorationOptions[]
     ): void {
         const state = this.iconManager.getState();
         const lineCount = doc.lineCount;
@@ -84,8 +109,8 @@ export class DecorationManager {
 
         for (let i = 0; i < lineCount; i++) {
             const lineText = doc.lineAt(i).text;
-            this.processIconNameProps(doc, i, lineText, iconNamePropRegex, inlineDecorationsToApply, decoratedInlineRanges);
-            this.processHtmlEntities(doc, i, lineText, htmlEntityRegex, inlineDecorationsToApply, decoratedInlineRanges);
+            this.processIconNameProps(doc, i, lineText, iconNamePropRegex, inlineDecorationsToApply, decoratedInlineRanges, nameHoverableDecorations);
+            this.processHtmlEntities(doc, i, lineText, htmlEntityRegex, inlineDecorationsToApply, decoratedInlineRanges, entityHoverableDecorations);
         }
     }
 
@@ -96,7 +121,8 @@ export class DecorationManager {
         doc: vscode.TextDocument,
         gutterDecorationsToApply: Map<string, vscode.DecorationOptions[]>,
         hoverAnnotations: vscode.DecorationOptions[],
-        decoratedGutterLines: Set<number>
+        decoratedGutterLines: Set<number>,
+        nameHoverableDecorations: vscode.DecorationOptions[]
     ): void {
         const state = this.iconManager.getState();
         decoratedGutterLines.add(contentLine);
@@ -129,7 +155,7 @@ export class DecorationManager {
         const gutterRange = new vscode.Range(contentLine, 0, contentLine, 1);
         gutterOptionsArray.push({ range: gutterRange });
 
-        this.addHoverAnnotation(doc, iconName, iconUnicode, ruleLine, contentLine, hoverAnnotations);
+        this.addHoverAnnotation(doc, iconName, iconUnicode, ruleLine, contentLine, hoverAnnotations, nameHoverableDecorations);
     }
 
     private addHoverAnnotation(
@@ -138,7 +164,8 @@ export class DecorationManager {
         iconUnicode: string | undefined,
         ruleLine: number,
         contentLine: number,
-        hoverAnnotations: vscode.DecorationOptions[]
+        hoverAnnotations: vscode.DecorationOptions[],
+        hoverableDecorations: vscode.DecorationOptions[]
     ): void {
         const contentLineText = doc.lineAt(contentLine).text;
         const contentRegex = /content:\s*(['"])(\\?[a-fA-F0-9]+)\1/;
@@ -151,6 +178,9 @@ export class DecorationManager {
                 const startColumn = quoteStartIndex;
                 const endColumn = startColumn + match[1].length + stringContent.length + match[1].length;
                 const hoverRange = new vscode.Range(contentLine, startColumn, contentLine, endColumn);
+
+                // 添加可悬停装饰
+                hoverableDecorations.push({ range: hoverRange });
 
                 const markdownString = new vscode.MarkdownString();
                 markdownString.isTrusted = true;
@@ -174,7 +204,8 @@ export class DecorationManager {
         lineText: string,
         regex: RegExp,
         inlineDecorationsToApply: Map<string, vscode.DecorationOptions[]>,
-        decoratedInlineRanges: Set<string>
+        decoratedInlineRanges: Set<string>,
+        hoverableDecorations: vscode.DecorationOptions[]
     ): void {
         let match;
         while ((match = regex.exec(lineText)) !== null) {
@@ -187,7 +218,7 @@ export class DecorationManager {
 
             const iconNameEndIndex = iconNameStartIndex + iconName.length;
             const range = new vscode.Range(lineIndex, iconNameStartIndex, lineIndex, iconNameEndIndex);
-            this.addInlineDecoration(iconName, range, iconName, doc, inlineDecorationsToApply, decoratedInlineRanges);
+            this.addInlineDecoration(iconName, range, iconName, doc, inlineDecorationsToApply, decoratedInlineRanges, hoverableDecorations);
         }
     }
 
@@ -197,7 +228,8 @@ export class DecorationManager {
         lineText: string,
         regex: RegExp,
         inlineDecorationsToApply: Map<string, vscode.DecorationOptions[]>,
-        decoratedInlineRanges: Set<string>
+        decoratedInlineRanges: Set<string>,
+        hoverableDecorations: vscode.DecorationOptions[]
     ): void {
         const state = this.iconManager.getState();
         let match;
@@ -210,7 +242,7 @@ export class DecorationManager {
 
             const endIndex = startIndex + fullEntity.length;
             const range = new vscode.Range(lineIndex, startIndex, lineIndex, endIndex);
-            this.addInlineDecoration(iconName, range, fullEntity, doc, inlineDecorationsToApply, decoratedInlineRanges);
+            this.addInlineDecoration(iconName, range, fullEntity, doc, inlineDecorationsToApply, decoratedInlineRanges, hoverableDecorations, true);
         }
     }
 
@@ -220,7 +252,9 @@ export class DecorationManager {
         hoverText: string,
         doc: vscode.TextDocument,
         inlineDecorationsToApply: Map<string, vscode.DecorationOptions[]>,
-        decoratedInlineRanges: Set<string>
+        decoratedInlineRanges: Set<string>,
+        hoverableDecorations: vscode.DecorationOptions[],
+        isEntity: boolean = false
     ): void {
         const state = this.iconManager.getState();
         const rangeString = `${range.start.line}:${range.start.character}-${range.end.character}`;
@@ -251,6 +285,9 @@ export class DecorationManager {
         inlineOptionsArray.push({ range });
         decoratedInlineRanges.add(rangeString);
 
+        // 添加可悬停装饰
+        hoverableDecorations.push({ range });
+
         const hoverInfo = {
             iconName,
             originalText: hoverText,
@@ -264,7 +301,9 @@ export class DecorationManager {
         editor: vscode.TextEditor,
         gutterDecorationsToApply: Map<string, vscode.DecorationOptions[]>,
         inlineDecorationsToApply: Map<string, vscode.DecorationOptions[]>,
-        hoverAnnotations: vscode.DecorationOptions[]
+        hoverAnnotations: vscode.DecorationOptions[],
+        nameHoverableDecorations: vscode.DecorationOptions[],
+        entityHoverableDecorations: vscode.DecorationOptions[]
     ): void {
         const state = this.iconManager.getState();
 
@@ -286,5 +325,15 @@ export class DecorationManager {
         if (state.hoverAnnotationDecorationType && hoverAnnotations.length > 0) {
             editor.setDecorations(state.hoverAnnotationDecorationType, hoverAnnotations);
         }
+
+        // 应用不同类型的可悬停装饰
+        editor.setDecorations(this.nameHoverableDecoration, nameHoverableDecorations);
+        editor.setDecorations(this.entityHoverableDecoration, entityHoverableDecorations);
+    }
+
+    // 清理资源
+    dispose() {
+        this.nameHoverableDecoration.dispose();
+        this.entityHoverableDecoration.dispose();
     }
 }
