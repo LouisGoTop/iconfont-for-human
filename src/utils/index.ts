@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
 import { GlobalState } from '../types';
+import { ICON_PREFIX_REGEX } from '../config/constants';
 
 // 创建SVG URI
 export function createSvgUri(state: GlobalState, iconIdFromMap: string): vscode.Uri {
-    const idWithoutPrefix = iconIdFromMap.replace(/^icon-/, '');
+    const idWithoutPrefix = iconIdFromMap.replace(ICON_PREFIX_REGEX, '');
     const symbolContent = state.svgPathMap.get(idWithoutPrefix) || state.svgPathMap.get(iconIdFromMap);
 
     if (!symbolContent) {

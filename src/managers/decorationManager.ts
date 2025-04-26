@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { IconManager } from './iconManager';
 import { createSvgUri } from '../utils';
-import { supportedCssLangs, supportedCodeLangs } from '../config/constants';
+import { supportedCssLangs, supportedCodeLangs, ICON_PREFIXES } from '../config/constants';
 
 export class DecorationManager {
     constructor(private iconManager: IconManager) {}
@@ -79,7 +79,8 @@ export class DecorationManager {
         const state = this.iconManager.getState();
         const lineCount = doc.lineCount;
         const htmlEntityRegex = /&#x([a-fA-F0-9]+);/g;
-        const iconNamePropRegex = /name=(?:["']|\{["'])((?:icon-|1-|1\.5-)[a-zA-Z0-9_-]+)(?:["']|\}["'])/g;
+        const prefixPattern = ICON_PREFIXES.map(prefix => prefix.replace('.', '\\.')).join('|');
+        const iconNamePropRegex = new RegExp(`name=(?:["']|\\{["'])((?:${prefixPattern})[a-zA-Z0-9_-]+)(?:["']|\\}["'])`, 'g');
 
         for (let i = 0; i < lineCount; i++) {
             const lineText = doc.lineAt(i).text;
@@ -225,7 +226,7 @@ export class DecorationManager {
         const rangeString = `${range.start.line}:${range.start.character}-${range.end.character}`;
         if (decoratedInlineRanges.has(rangeString)) {return;}
 
-        const idWithoutPrefix = iconName.replace(/^icon-/, '');
+        const idWithoutPrefix = this.iconManager.getIdWithoutPrefix(iconName);
         if (!state.svgPathMap.has(idWithoutPrefix) && !state.svgPathMap.has(iconName)) {
             return;
         }

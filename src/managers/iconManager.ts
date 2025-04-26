@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { GlobalState } from '../types';
 import { disposeDecorationTypes } from '../utils';
+import { ICON_PREFIX_REGEX } from '../config/constants';
 
 export class IconManager {
     private state: GlobalState;
@@ -32,7 +33,7 @@ export class IconManager {
 
     // 添加图标映射
     addIconMapping(iconName: string, unicode: string): void {
-        const idWithoutPrefix = iconName.replace(/^icon-/, '');
+        const idWithoutPrefix = iconName.replace(ICON_PREFIX_REGEX, '');
         if (this.state.svgPathMap.has(idWithoutPrefix) || this.state.svgPathMap.has(iconName)) {
             this.state.iconMap.set(iconName, unicode);
             this.state.unicodeToIconNameMap.set(unicode, iconName);
@@ -47,5 +48,10 @@ export class IconManager {
     // 获取图标名称
     getIconNameByUnicode(unicode: string): string | undefined {
         return this.state.unicodeToIconNameMap.get(unicode);
+    }
+
+    // 获取不带前缀的ID
+    getIdWithoutPrefix(iconName: string): string {
+        return iconName.replace(ICON_PREFIX_REGEX, '');
     }
 }
