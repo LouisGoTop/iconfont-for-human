@@ -1,9 +1,15 @@
 import * as vscode from 'vscode';
 import { IconManager } from '../managers/iconManager';
-import { createSvgUri } from '../utils';
+import { createSvgUri } from '../utils/index';
 
 export class IconHoverProvider implements vscode.HoverProvider {
     constructor(private iconManager: IconManager) {}
+
+    // 添加 dispose 方法以实现可释放接口
+    dispose(): void {
+        // 这里可以放置需要清理的资源
+        // 目前这个类没有需要释放的资源，但添加一个空方法来满足接口要求
+    }
 
     provideHover(
         document: vscode.TextDocument,

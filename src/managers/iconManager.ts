@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { GlobalState } from '../types';
-import { disposeDecorationTypes } from '../utils';
+import { disposeDecorationTypes } from '../utils/index';
 import { ICON_PREFIX_REGEX } from '../config/constants';
 
 export class IconManager {

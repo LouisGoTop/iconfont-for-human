@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { IconManager } from './iconManager';
-import { createSvgUri } from '../utils';
+import { createSvgUri } from '../utils/index';
 import { supportedCssLangs, supportedCodeLangs, ICON_PREFIXES } from '../config/constants';
 
 export class DecorationManager {

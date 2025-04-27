@@ -4,7 +4,7 @@ import { DecorationManager } from './managers/decorationManager';
 import { CommandManager } from './managers/commandManager';
 import { IconFontParser } from './parsers/iconFontParser';
 import { IconHoverProvider } from './providers/hoverProvider';
-import { disposeDecorationTypes } from './utils';
+import { disposeDecorationTypes } from './utils/index';
 import { supportedCodeLangs } from './config/constants';
 
 export async function activate(context: vscode.ExtensionContext) {

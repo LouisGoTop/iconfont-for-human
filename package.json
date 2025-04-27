@@ -2,7 +2,7 @@
   "name": "iconfont-for-human",
   "displayName": "iconfont-for-human",
   "description": "make iconfont use again",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "engines": {
     "vscode": "^1.80.0"
   },
