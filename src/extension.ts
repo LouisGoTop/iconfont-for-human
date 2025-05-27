@@ -4,6 +4,7 @@ import { DecorationManager } from './managers/decorationManager';
 import { CommandManager } from './managers/commandManager';
 import { IconFontParser } from './parsers/iconFontParser';
 import { IconHoverProvider } from './providers/hoverProvider';
+import { FontPreviewProvider } from './providers/fontPreviewProvider';
 import { disposeDecorationTypes } from './utils/index';
 import { supportedCodeLangs } from './config/constants';
 
@@ -26,6 +27,13 @@ export async function activate(context: vscode.ExtensionContext) {
         hoverProvider,
         decorationManager
     );
+
+    // --- 注册 Custom Editor Provider ---
+    const fontPreviewProvider = new FontPreviewProvider(context);
+    context.subscriptions.push(
+        vscode.window.registerCustomEditorProvider(FontPreviewProvider.viewType, fontPreviewProvider)
+    );
+    console.log(`iconfont-for-human: Registered ${FontPreviewProvider.viewType}`);
 
     // 初始化装饰器类型
     const hoverDecoration = vscode.window.createTextEditorDecorationType({});
@@ -65,6 +73,9 @@ export async function activate(context: vscode.ExtensionContext) {
             activeEditor = editor;
             if (editor && editor.document.uri.scheme !== 'vscode-custom-editor') {
                 triggerUpdateDecorations();
+            } else if (editor) {
+                // 如果是自定义编辑器，确保装饰被清除
+                disposeDecorationTypes(iconManager.getState(), editor);
             }
         })
     );
